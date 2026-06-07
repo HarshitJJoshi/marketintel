@@ -1,0 +1,20 @@
+:root {
+  --card: #ffffff;
+  --surface: #f5f4f0;
+  --border: rgba(0,0,0,0.12);
+  --muted: #888780;
+  --text: #1a1a18;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --card: #1e1e1c;
+    --surface: #2a2a28;
+    --border: rgba(255,255,255,0.1);
+    --muted: #888780;
+    --text: #e8e6e0;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #f5f3ef; color: #3d3a36; }
