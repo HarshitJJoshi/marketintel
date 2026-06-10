@@ -169,6 +169,15 @@ def run_pipeline():
     log(f"Top sector: {sectors[0]['sector']} — {sectors[0]['avg_change']:+.2f}%")
     print("=" * 55)
 
+    # Save daily history snapshot
+    log("Saving history snapshot...")
+    try:
+        from scoring.history import save_daily_snapshot
+        save_daily_snapshot(scores, sentiment)
+        log("History snapshot saved")
+    except Exception as e:
+        log(f"History snapshot failed: {e}")
+
     return scores, sectors
 
     # Save daily history snapshot
