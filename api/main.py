@@ -579,3 +579,14 @@ def get_strategies():
             build_conservative(),
         ]
     }
+
+@app.get("/api/events")
+def get_events(days: int = 14):
+    try:
+        with open("data/processed/events.json") as f:
+            data = json.load(f)
+        return data
+    except:
+        from collectors.events_collector import get_upcoming_events
+        events = get_upcoming_events(days_ahead=days)
+        return {"events": events}

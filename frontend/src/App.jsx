@@ -477,7 +477,7 @@ function HistoryTab({ onTickerClick }) {
       return bScore - aScore
     })
 
- if (tickers.length === 0) return (
+  if (tickers.length === 0) return (
     <div style={{background:"#faf8f4",borderRadius:16,padding:"3rem 2rem",
       border:"1px solid #e8e4dc",textAlign:"center"}}>
       <div style={{fontSize:15,fontWeight:500,marginBottom:8}}>No history yet</div>
@@ -491,7 +491,6 @@ function HistoryTab({ onTickerClick }) {
 
   return (
     <div>
-
       {/* Insight banner */}
       <div style={{background:"#ede9fe",border:"1px solid #c4b5fd",
         borderRadius:16,padding:"1.25rem 1.5rem",marginBottom:"1.5rem"}}>
@@ -544,7 +543,7 @@ function HistoryTab({ onTickerClick }) {
                   ? isEtf ? "#ede9fe" : "#dcfce7"
                   : "#faf8f4",
                 color: selectedTickers.includes(t)
-                  ? isEtf ? "#5b21b6" : "#166534"
+                  ? isEtf ? "#5b21b6" : "#166634"
                   : "#6b6862"
               }}>{t}</button>
             )
@@ -775,6 +774,74 @@ function SectorDrilldown({ sectors, onTickerClick }) {
   )
 }
 
+function EventsSidebar() {
+  const [events, setEvents] = useState(null)
+
+  useEffect(() => {
+    axios.get(`${API}/api/events`).then(r => setEvents(r.data.events))
+  }, [])
+
+  if (!events) return null
+
+  const typeColors = {
+    fed: { bg: "#fef2f2", border: "#fca5a5", text: "#991b1b", icon: "🏦" },
+    economic: { bg: "#fffbeb", border: "#fde68a", text: "#92400e", icon: "📊" },
+    earnings: { bg: "#f0fdf4", border: "#86efac", text: "#166534", icon: "📅" },
+  }
+
+  return (
+    <div style={{
+      width: 260, flexShrink: 0,
+      background: "#faf8f4", borderRadius: 16,
+      border: "1px solid #e8e4dc", padding: "1rem",
+      height: "fit-content", position: "sticky", top: 72
+    }}>
+      <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:12,
+        textTransform:"uppercase",letterSpacing:"0.08em"}}>
+        Market events
+      </div>
+
+      {events.length === 0 ? (
+        <div style={{fontSize:12,color:"#9a9690"}}>No major events in next 14 days</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {events.map((e, i) => {
+            const colors = typeColors[e.type] || typeColors.economic
+            const label = e.is_today ? "TODAY" : e.is_tomorrow ? "TOMORROW" : `in ${e.days_away}d`
+            return (
+              <div key={i} style={{
+                background: colors.bg,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 10, padding: "8px 10px"
+              }}>
+                <div style={{display:"flex",justifyContent:"space-between",
+                  alignItems:"center",marginBottom:3}}>
+                  <span style={{fontSize:10,fontWeight:700,
+                    color: e.is_today ? "#991b1b" : e.is_tomorrow ? "#92400e" : "#9a9690"}}>
+                    {label}
+                  </span>
+                  <span style={{fontSize:10,color:colors.text,fontWeight:500}}>
+                    {e.impact === "high" ? "🔴 high" : "🟡 medium"}
+                  </span>
+                </div>
+                <div style={{fontSize:12,fontWeight:600,color:"#3d3a36",marginBottom:2}}>
+                  {colors.icon} {e.event}
+                </div>
+                <div style={{fontSize:10,color:"#9a9690"}}>{e.date}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div style={{marginTop:12,paddingTop:12,borderTop:"0.5px solid #e8e4dc",
+        fontSize:10,color:"#9a9690",lineHeight:1.5}}>
+        High impact events can move markets 1-3%. Fed decisions especially.
+      </div>
+    </div>
+  )
+}
+
 function StrategiesTab({ onTickerClick }) {
   const [strategies, setStrategies] = useState(null)
   const [amount, setAmount] = useState(100)
@@ -801,7 +868,6 @@ function StrategiesTab({ onTickerClick }) {
 
   return (
     <div>
-      {/* Header */}
       <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",
         border:"1px solid #e8e4dc",marginBottom:"1.5rem"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -828,8 +894,6 @@ function StrategiesTab({ onTickerClick }) {
             <span style={{fontSize:13,color:"#6b6862"}}>to invest</span>
           </div>
         </div>
-
-        {/* Strategy selector */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
           {strategies.strategies.map((s, i) => (
             <button key={s.name} onClick={() => setActiveStrategy(i)} style={{
@@ -849,10 +913,7 @@ function StrategiesTab({ onTickerClick }) {
         </div>
       </div>
 
-      {/* Active strategy detail */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:14}}>
-
-        {/* Allocations */}
         <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",
           border:"1px solid #e8e4dc"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
@@ -862,13 +923,10 @@ function StrategiesTab({ onTickerClick }) {
               <div style={{fontSize:12,color:"#9a9690"}}>{strategy.tagline}</div>
             </div>
           </div>
-
           <div style={{fontSize:13,color:"#6b6862",lineHeight:1.6,
             padding:"10px 0",borderBottom:"0.5px solid #e8e4dc",marginBottom:14}}>
             {strategy.description}
           </div>
-
-          {/* Allocation bars */}
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {strategy.allocations.map(a => {
               const dollars = ((a.allocation_pct / 100) * amount).toFixed(2)
@@ -891,25 +949,17 @@ function StrategiesTab({ onTickerClick }) {
                       <span style={{fontSize:11,color:"#9a9690"}}>{a.sector}</span>
                     </div>
                     <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:15,fontWeight:700,color:"#3d3a36"}}>
-                        ${dollars}
-                      </div>
+                      <div style={{fontSize:15,fontWeight:700,color:"#3d3a36"}}>${dollars}</div>
                       <div style={{fontSize:11,color:"#9a9690"}}>{a.allocation_pct}%</div>
                     </div>
                   </div>
-
-                  {/* Allocation bar */}
                   <div style={{background:"#e8e4dc",borderRadius:4,height:6,marginBottom:8}}>
-                    <div style={{
-                      width:`${a.allocation_pct}%`,height:6,borderRadius:4,
-                      background:a.type==="ETF"?"#7c6fcd":"#5a9e3a"
-                    }}/>
+                    <div style={{width:`${a.allocation_pct}%`,height:6,borderRadius:4,
+                      background:a.type==="ETF"?"#7c6fcd":"#5a9e3a"}}/>
                   </div>
-
                   <div style={{fontSize:11,color:"#6b6862",marginBottom:6,lineHeight:1.4}}>
                     {a.rationale}
                   </div>
-
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{fontSize:10,color:"#9a9690"}}>⏱ {a.horizon}</span>
                     {a.week_change_pct != null && (
@@ -931,10 +981,7 @@ function StrategiesTab({ onTickerClick }) {
           </div>
         </div>
 
-        {/* Right panel — summary */}
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-
-          {/* Risk badge */}
           <div style={{background:rc.bg,border:`1px solid ${rc.border}`,
             borderRadius:14,padding:"14px 16px"}}>
             <div style={{fontSize:11,fontWeight:600,color:rc.text,marginBottom:6,
@@ -948,14 +995,12 @@ function StrategiesTab({ onTickerClick }) {
             <div style={{fontSize:13,fontWeight:600,color:rc.text}}>{rc.label}</div>
           </div>
 
-          {/* Split summary */}
           <div style={{background:"#faf8f4",borderRadius:14,padding:"14px 16px",
             border:"1px solid #e8e4dc"}}>
             <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:12,
               textTransform:"uppercase",letterSpacing:"0.07em"}}>Allocation split</div>
             <div style={{marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",
-                fontSize:12,marginBottom:4}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:"#5a9e3a",fontWeight:500}}>Stocks</span>
                 <span style={{fontWeight:600}}>${((strategy.stock_pct/100)*amount).toFixed(2)}</span>
               </div>
@@ -964,8 +1009,7 @@ function StrategiesTab({ onTickerClick }) {
               </div>
             </div>
             <div>
-              <div style={{display:"flex",justifyContent:"space-between",
-                fontSize:12,marginBottom:4}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:"#7c6fcd",fontWeight:500}}>ETFs</span>
                 <span style={{fontWeight:600}}>${((strategy.etf_pct/100)*amount).toFixed(2)}</span>
               </div>
@@ -975,7 +1019,6 @@ function StrategiesTab({ onTickerClick }) {
             </div>
           </div>
 
-          {/* Horizon */}
           <div style={{background:"#faf8f4",borderRadius:14,padding:"14px 16px",
             border:"1px solid #e8e4dc"}}>
             <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
@@ -990,7 +1033,6 @@ function StrategiesTab({ onTickerClick }) {
             </div>
           </div>
 
-          {/* Warnings */}
           <div style={{background:"#fff8ed",border:"1px solid #f5d98b",
             borderRadius:14,padding:"14px 16px"}}>
             <div style={{fontSize:11,fontWeight:600,color:"#92400e",marginBottom:8,
@@ -1087,74 +1129,80 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{maxWidth:1080,margin:"0 auto",padding:"2rem 1.5rem"}}>
+      <div style={{maxWidth:1340,margin:"0 auto",padding:"2rem 1.5rem"}}>
         {activeTab === "history" ? (
           <HistoryTab onTickerClick={handleTickerClick}/>
         ) : activeTab === "strategies" ? (
           <StrategiesTab onTickerClick={handleTickerClick}/>
         ) : (
-          <>
-            {/* Summary cards */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:"2rem"}}>
-              {[
-                {label:"Top sector", value:data.top_sector, sub:`+${data.top_sector_change}% avg this week`},
-                {label:"Tickers tracked", value:data.total_tickers, sub:"across all sectors"},
-                {label:"Top stock pick", value:data.top5_stocks?.[0]?.ticker, sub:`score ${data.top5_stocks?.[0]?.composite_score}/100`},
-                {label:"Top ETF pick", value:data.top5_etfs?.[0]?.ticker, sub:`score ${data.top5_etfs?.[0]?.composite_score}/100`},
-              ].map(m => (
-                <div key={m.label} style={{background:"#faf8f4",borderRadius:14,padding:"16px 18px",border:"1px solid #e8e4dc"}}>
-                  <div style={{fontSize:11,color:"#9a9690",marginBottom:6,fontWeight:500}}>{m.label}</div>
-                  <div style={{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}}>{m.value}</div>
-                  <div style={{fontSize:11,color:"#9a9690",marginTop:4}}>{m.sub}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 260px",gap:20,alignItems:"start"}}>
+            {/* Main dashboard content */}
+            <div>
+              {/* Summary cards */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:"2rem"}}>
+                {[
+                  {label:"Top sector", value:data.top_sector, sub:`+${data.top_sector_change}% avg this week`},
+                  {label:"Tickers tracked", value:data.total_tickers, sub:"across all sectors"},
+                  {label:"Top stock pick", value:data.top5_stocks?.[0]?.ticker, sub:`score ${data.top5_stocks?.[0]?.composite_score}/100`},
+                  {label:"Top ETF pick", value:data.top5_etfs?.[0]?.ticker, sub:`score ${data.top5_etfs?.[0]?.composite_score}/100`},
+                ].map(m => (
+                  <div key={m.label} style={{background:"#faf8f4",borderRadius:14,padding:"16px 18px",border:"1px solid #e8e4dc"}}>
+                    <div style={{fontSize:11,color:"#9a9690",marginBottom:6,fontWeight:500}}>{m.label}</div>
+                    <div style={{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}}>{m.value}</div>
+                    <div style={{fontSize:11,color:"#9a9690",marginTop:4}}>{m.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Sector momentum */}
+              <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",
+                border:"1px solid #e8e4dc",marginBottom:"2rem"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:16,
+                  textTransform:"uppercase",letterSpacing:"0.08em"}}>
+                  Sector momentum this week
                 </div>
-              ))}
+                <SectorBar sectors={data.sectors}/>
+              </div>
+
+              {/* Top 5 Stocks */}
+              <div style={{marginBottom:"2rem"}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:14}}>
+                  <div style={{fontSize:16,fontWeight:700}}>Top 5 Stocks</div>
+                  <div style={{fontSize:12,color:"#9a9690"}}>ranked by composite score · click for full analysis</div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:12}}>
+                  {(data.top5_stocks||[]).map((t,i) => (
+                    <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
+                  ))}
+                </div>
+              </div>
+
+              {/* Top 5 ETFs */}
+              <div style={{marginBottom:"2rem"}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:14}}>
+                  <div style={{fontSize:16,fontWeight:700}}>Top 5 ETFs</div>
+                  <div style={{fontSize:12,color:"#9a9690"}}>diversified exposure · click for full analysis</div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:12}}>
+                  {(data.top5_etfs||[]).map((t,i) => (
+                    <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sector drill-down */}
+              <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",border:"1px solid #e8e4dc"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:14,
+                  textTransform:"uppercase",letterSpacing:"0.08em"}}>
+                  Sector drill-down
+                </div>
+                <SectorDrilldown sectors={data.sectors} onTickerClick={handleTickerClick}/>
+              </div>
             </div>
 
-            {/* Sector momentum */}
-            <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",
-              border:"1px solid #e8e4dc",marginBottom:"2rem"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:16,
-                textTransform:"uppercase",letterSpacing:"0.08em"}}>
-                Sector momentum this week
-              </div>
-              <SectorBar sectors={data.sectors}/>
-            </div>
-
-            {/* Top 5 Stocks */}
-            <div style={{marginBottom:"2rem"}}>
-              <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:14}}>
-                <div style={{fontSize:16,fontWeight:700}}>Top 5 Stocks</div>
-                <div style={{fontSize:12,color:"#9a9690"}}>ranked by composite score · click for full analysis</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:12}}>
-                {(data.top5_stocks||[]).map((t,i) => (
-                  <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
-                ))}
-              </div>
-            </div>
-
-            {/* Top 5 ETFs */}
-            <div style={{marginBottom:"2rem"}}>
-              <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:14}}>
-                <div style={{fontSize:16,fontWeight:700}}>Top 5 ETFs</div>
-                <div style={{fontSize:12,color:"#9a9690"}}>diversified exposure · click for full analysis</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:12}}>
-                {(data.top5_etfs||[]).map((t,i) => (
-                  <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
-                ))}
-              </div>
-            </div>
-
-            {/* Sector drill-down */}
-            <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",border:"1px solid #e8e4dc"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:14,
-                textTransform:"uppercase",letterSpacing:"0.08em"}}>
-                Sector drill-down
-              </div>
-              <SectorDrilldown sectors={data.sectors} onTickerClick={handleTickerClick}/>
-            </div>
-          </>
+            {/* Events sidebar */}
+            <EventsSidebar/>
+          </div>
         )}
       </div>
     </div>
