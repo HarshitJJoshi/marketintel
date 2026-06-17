@@ -10,6 +10,21 @@ SEED_WATCHLIST = [
     "SOXX", "XLK", "XLF", "XLV", "ICLN"  # sector ETFs
 ]
 
+def load_user_watchlist():
+    """Load user-added tickers from persistent watchlist"""
+    try:
+        watchlist_path = "data/watchlist.json"
+        if os.path.exists(watchlist_path):
+            with open(watchlist_path) as f:
+                data = json.load(f)
+                tickers = data.get("tickers", [])
+                if tickers:
+                    print(f"  Loaded {len(tickers)} user watchlist tickers: {', '.join(tickers)}")
+                return tickers
+    except Exception as e:
+        print(f"  Watchlist load failed: {e}")
+    return []
+
 def build_dynamic_watchlist(nlp_tickers=[]):
     """
     Build watchlist dynamically:
@@ -19,6 +34,10 @@ def build_dynamic_watchlist(nlp_tickers=[]):
     4. Deduplicate and validate
     """
     watchlist = set(SEED_WATCHLIST)
+
+    # Add user watchlist tickers
+    user_tickers = load_user_watchlist()
+    watchlist.update(user_tickers)
 
     # Add NLP-discovered tickers
     for t in nlp_tickers:

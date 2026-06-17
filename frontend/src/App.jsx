@@ -452,15 +452,83 @@ function Modal({ ticker, data, onClose }) {
   )
 }
 
+function WatchlistAdd({ ticker, onAdded }) {
+  const [status, setStatus] = useState("idle") // idle, loading, success, error
+  const [message, setMessage] = useState("")
+
+  const handleAdd = async () => {
+    setStatus("loading")
+    try {
+      const r = await axios.post(`${API}/api/watchlist/${ticker}`)
+      if (r.data.success) {
+        setStatus("success")
+        setMessage(r.data.message)
+        setTimeout(() => onAdded(), 2000)
+      } else {
+        setStatus("error")
+        setMessage(r.data.error || "Could not add ticker")
+      }
+    } catch {
+      setStatus("error")
+      setMessage("Failed to connect to API")
+    }
+  }
+
+  return (
+    <div style={{background:"#faf8f4",borderRadius:16,padding:"2rem",
+      border:"1px solid #e8e4dc",textAlign:"center",marginBottom:16}}>
+      <div style={{fontSize:22,fontWeight:700,fontFamily:"monospace",marginBottom:8}}>
+        {ticker}
+      </div>
+      <div style={{fontSize:13,color:"#9a9690",marginBottom:16}}>
+        Not tracked yet — add it to your watchlist and it will appear in history after the next pipeline run
+      </div>
+
+      {status === "idle" && (
+        <button onClick={handleAdd} style={{
+          fontSize:13,fontWeight:600,padding:"10px 24px",borderRadius:10,
+          cursor:"pointer",border:"none",background:"#7c6fcd",color:"#fff"
+        }}>
+          + Add {ticker} to watchlist
+        </button>
+      )}
+
+      {status === "loading" && (
+        <div style={{fontSize:13,color:"#9a9690"}}>Validating ticker...</div>
+      )}
+
+      {status === "success" && (
+        <div style={{fontSize:13,color:"#5a9e3a",fontWeight:500}}>
+          ✓ {message}
+        </div>
+      )}
+
+      {status === "error" && (
+        <div>
+          <div style={{fontSize:13,color:"#d95f5f",marginBottom:8}}>{message}</div>
+          <button onClick={() => setStatus("idle")} style={{
+            fontSize:12,padding:"6px 16px",borderRadius:8,cursor:"pointer",
+            border:"1px solid #e8e4dc",background:"#faf8f4",color:"#6b6862"
+          }}>Try again</button>
+        </div>
+      )}
+
+      <div style={{fontSize:11,color:"#b0ada8",marginTop:12}}>
+        Next pipeline run: 7:00 AM daily
+      </div>
+    </div>
+  )
+}
+
 function HistoryTab({ onTickerClick }) {
   const [allHistory, setAllHistory] = useState(null)
+  const [search, setSearch] = useState("")
   const [selectedTickers, setSelectedTickers] = useState([])
+  const [compareMode, setCompareMode] = useState(false)
 
   useEffect(() => {
     axios.get(`${API}/api/history?days=30`).then(r => {
       setAllHistory(r.data.history)
-      const tickers = Object.keys(r.data.history).slice(0, 6)
-      setSelectedTickers(tickers)
     })
   }, [])
 
@@ -477,6 +545,11 @@ function HistoryTab({ onTickerClick }) {
       return bScore - aScore
     })
 
+  // Filter by search
+  const filtered = search.trim()
+    ? tickers.filter(t => t.toLowerCase().includes(search.toLowerCase()))
+    : tickers
+
   if (tickers.length === 0) return (
     <div style={{background:"#faf8f4",borderRadius:16,padding:"3rem 2rem",
       border:"1px solid #e8e4dc",textAlign:"center"}}>
@@ -488,6 +561,8 @@ function HistoryTab({ onTickerClick }) {
       </div>
     </div>
   )
+
+  const displayTickers = selectedTickers.length > 0 ? selectedTickers : filtered.slice(0, 6)
 
   return (
     <div>
@@ -518,47 +593,114 @@ function HistoryTab({ onTickerClick }) {
         </div>
       </div>
 
-      <div style={{marginBottom:16}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:10,
-          textTransform:"uppercase",letterSpacing:"0.08em"}}>
-          Select tickers to compare (up to 8)
+      {/* Search + controls */}
+      <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
+        <div style={{position:"relative",flex:1}}>
+          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",
+            fontSize:14,color:"#9a9690"}}>🔍</span>
+          <input
+            value={search}
+            onChange={e => {
+              setSearch(e.target.value)
+              setSelectedTickers([])
+            }}
+            placeholder="Search tickers... (AMD, NVDA, COST)"
+            style={{width:"100%",paddingLeft:36,paddingRight:12,paddingTop:8,paddingBottom:8,
+              border:"1px solid #e8e4dc",borderRadius:10,fontSize:13,
+              background:"#faf8f4",color:"#3d3a36",outline:"none",boxSizing:"border-box"}}
+          />
         </div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {tickers.map(t => {
+        <button onClick={() => setCompareMode(!compareMode)} style={{
+          fontSize:12,fontWeight:500,padding:"8px 16px",borderRadius:10,cursor:"pointer",
+          border: compareMode ? "1.5px solid #7c6fcd" : "1px solid #e8e4dc",
+          background: compareMode ? "#ede9fe" : "#faf8f4",
+          color: compareMode ? "#5b21b6" : "#6b6862",
+          whiteSpace:"nowrap"
+        }}>
+          {compareMode ? "✓ Compare mode" : "Compare"}
+        </button>
+        {selectedTickers.length > 0 && (
+          <button onClick={() => setSelectedTickers([])} style={{
+            fontSize:12,padding:"8px 14px",borderRadius:10,cursor:"pointer",
+            border:"1px solid #e8e4dc",background:"#faf8f4",color:"#9a9690"
+          }}>
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Compare mode instructions */}
+      {compareMode && selectedTickers.length === 0 && (
+        <div style={{fontSize:12,color:"#7c6fcd",marginBottom:12,
+          padding:"8px 14px",background:"#ede9fe",borderRadius:8}}>
+          Click tickers below to add them to comparison (up to 4)
+        </div>
+      )}
+
+      {/* Ticker pills */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:8,
+          textTransform:"uppercase",letterSpacing:"0.08em"}}>
+          {search ? `Results for "${search}" — ${filtered.length} tickers` : `All tickers — sorted by score`}
+        </div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          {filtered.map(t => {
             const hist = allHistory[t]
             const latest = hist[hist.length-1]
             const isEtf = latest?.is_etf
+            const isSelected = selectedTickers.includes(t)
+            const score = latest?.composite_score || 0
+            const change = latest?.week_change_pct || 0
             return (
               <button key={t} onClick={() => {
-                setSelectedTickers(prev =>
-                  prev.includes(t)
-                    ? prev.filter(x => x !== t)
-                    : [...prev, t].slice(0, 8)
-                )
+                if (compareMode) {
+                  setSelectedTickers(prev =>
+                    prev.includes(t)
+                      ? prev.filter(x => x !== t)
+                      : prev.length < 4 ? [...prev, t] : prev
+                  )
+                } else {
+                  setSelectedTickers(prev =>
+                    prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
+                  )
+                }
               }} style={{
                 fontSize:11,fontFamily:"monospace",fontWeight:600,
-                padding:"4px 12px",borderRadius:8,cursor:"pointer",
-                border: selectedTickers.includes(t) ? "1.5px solid #7c6fcd" : "1px solid #e8e4dc",
-                background: selectedTickers.includes(t)
+                padding:"4px 10px",borderRadius:8,cursor:"pointer",
+                border: isSelected ? "1.5px solid #7c6fcd" : "1px solid #e8e4dc",
+                background: isSelected
                   ? isEtf ? "#ede9fe" : "#dcfce7"
                   : "#faf8f4",
-                color: selectedTickers.includes(t)
-                  ? isEtf ? "#5b21b6" : "#166634"
-                  : "#6b6862"
-              }}>{t}</button>
+                color: isSelected
+                  ? isEtf ? "#5b21b6" : "#166534"
+                  : "#6b6862",
+                display:"flex",alignItems:"center",gap:4
+              }}>
+                {t}
+                <span style={{fontSize:9,fontWeight:400,
+                  color: change >= 0 ? "#5a9e3a" : "#d95f5f"}}>
+                  {change >= 0 ? "+" : ""}{change.toFixed(1)}%
+                </span>
+                <span style={{fontSize:9,color:"#9a9690"}}>{score}</span>
+              </button>
             )
           })}
         </div>
       </div>
 
-      {selectedTickers.length === 0 && (
-        <div style={{fontSize:13,color:"#9a9690",textAlign:"center",padding:"2rem"}}>
-          Select tickers above to view their history charts
-        </div>
+      {/* Search results or add to watchlist */}
+      {search && filtered.length === 0 && (
+        <WatchlistAdd ticker={search.toUpperCase()} onAdded={() => setSearch("")}/>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:14}}>
-        {selectedTickers.map(ticker => {
+      <div style={{
+        display:"grid",
+        gridTemplateColumns: compareMode && selectedTickers.length > 1
+          ? "repeat(2,minmax(0,1fr))"
+          : "repeat(2,minmax(0,1fr))",
+        gap:14
+      }}>
+        {displayTickers.map(ticker => {
           const hist = allHistory[ticker] || []
           if (hist.length === 0) return null
           const latest = hist[hist.length-1]
@@ -570,6 +712,8 @@ function HistoryTab({ onTickerClick }) {
           return (
             <div key={ticker} style={{background:"#faf8f4",borderRadius:16,
               padding:"16px 18px",border:"1px solid #e8e4dc"}}>
+
+              {/* Header */}
               <div style={{display:"flex",justifyContent:"space-between",
                 alignItems:"center",marginBottom:12}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -592,11 +736,35 @@ function HistoryTab({ onTickerClick }) {
                 </div>
               </div>
 
+              {/* 9-signal mini breakdown */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}}>
+                {[
+                  {label:"Price", value: latest.price_score || 0, color:"#4f8ef7"},
+                  {label:"Sentiment", value: latest.sentiment_score || 0, color:"#5a9e3a"},
+                  {label:"Buzz", value: latest.buzz_score || 0, color:"#7c6fcd"},
+                  {label:"StockTwits", value: latest.st_score || 0, color:"#0ea5e9"},
+                  {label:"Fundamentals", value: latest.fundamental_score || 50, color:"#059669"},
+                  {label:"Options", value: latest.options_score || 50, color:"#f59e0b"},
+                ].map(s => (
+                  <div key={s.label} style={{background:"#f5f3ef",borderRadius:8,padding:"6px 8px"}}>
+                    <div style={{fontSize:9,color:"#9a9690",marginBottom:2}}>{s.label}</div>
+                    <div style={{background:"#e8e4dc",borderRadius:3,height:4}}>
+                      <div style={{width:`${s.value}%`,height:4,borderRadius:3,background:s.color}}/>
+                    </div>
+                    <div style={{fontSize:10,fontWeight:600,color:"#3d3a36",marginTop:2}}>
+                      {Math.round(s.value)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Score chart */}
               <div style={{marginBottom:6}}>
                 <div style={{fontSize:10,color:"#9a9690",marginBottom:4}}>Composite score</div>
                 <HistoryChart history={hist} width={460}/>
               </div>
 
+              {/* Sentiment chart */}
               {hist.length > 1 && (
                 <div>
                   <div style={{fontSize:10,color:"#9a9690",marginBottom:2,marginTop:8}}>Sentiment</div>
@@ -604,9 +772,10 @@ function HistoryTab({ onTickerClick }) {
                 </div>
               )}
 
+              {/* Footer stats */}
               <div style={{display:"flex",justifyContent:"space-between",
                 alignItems:"center",marginTop:10,paddingTop:10,
-                borderTop:"0.5px solid #e8e4dc"}}>
+                borderTop:"0.5px solid #e8e4dc",flexWrap:"wrap",gap:8}}>
                 <span style={{fontSize:11,color:"#9a9690"}}>
                   {hist.length} day{hist.length !== 1 ? "s" : ""} tracked
                 </span>
@@ -622,6 +791,25 @@ function HistoryTab({ onTickerClick }) {
                       {scoreDelta>=0?"+":""}{scoreDelta.toFixed(1)}
                     </span>
                   </span>
+                  {latest.rsi && (
+                    <span style={{fontSize:11,color:"#9a9690"}}>
+                      RSI: <span style={{fontWeight:600,
+                        color: latest.rsi > 70 ? "#d95f5f" : latest.rsi < 30 ? "#5a9e3a" : "#3d3a36"}}>
+                        {latest.rsi}
+                      </span>
+                    </span>
+                  )}
+                  {latest.search_trend && latest.search_trend !== "stable" && (
+                    <span style={{fontSize:11,fontWeight:500,
+                      color: latest.search_trend === "rising" ? "#5a9e3a" : "#d95f5f"}}>
+                      🔍 {latest.search_trend}
+                    </span>
+                  )}
+                  {latest.unusual_options && (
+                    <span style={{fontSize:11,color:"#92400e",fontWeight:500}}>
+                      ⚡ unusual options
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

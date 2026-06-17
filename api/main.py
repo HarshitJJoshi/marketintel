@@ -603,3 +603,50 @@ def get_events(days: int = 14):
         from collectors.events_collector import get_upcoming_events
         events = get_upcoming_events(days_ahead=days)
         return {"events": events}
+
+@app.get("/api/watchlist")
+def get_watchlist():
+    try:
+        with open("data/watchlist.json") as f:
+            return json.load(f)
+    except:
+        return {"tickers": []}
+
+@app.post("/api/watchlist/{ticker}")
+def add_to_watchlist(ticker: str):
+    ticker = ticker.upper().strip()
+    try:
+        # Validate ticker exists on yfinance
+        import yfinance as yf
+        info = yf.Ticker(ticker).info
+        if not info.get("regularMarketPrice") and not info.get("currentPrice"):
+            return {"success": False, "error": f"{ticker} not found on markets"}
+
+        # Load existing
+        try:
+            with open("data/watchlist.json") as f:
+                data = json.load(f)
+        except:
+            data = {"tickers": []}
+
+        if ticker not in data["tickers"]:
+            data["tickers"].append(ticker)
+            with open("data/watchlist.json", "w") as f:
+                json.dump(data, f, indent=2)
+
+        return {"success": True, "ticker": ticker, "message": f"{ticker} added to watchlist — will appear in history after next pipeline run"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.delete("/api/watchlist/{ticker}")
+def remove_from_watchlist(ticker: str):
+    ticker = ticker.upper().strip()
+    try:
+        with open("data/watchlist.json") as f:
+            data = json.load(f)
+        data["tickers"] = [t for t in data["tickers"] if t != ticker]
+        with open("data/watchlist.json", "w") as f:
+            json.dump(data, f, indent=2)
+        return {"success": True, "ticker": ticker}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
