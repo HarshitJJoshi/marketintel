@@ -452,6 +452,60 @@ function Modal({ ticker, data, onClose }) {
   )
 }
 
+function WatchlistManager({ onTickerClick }) {
+  const [watchlist, setWatchlist] = useState([])
+  const [removing, setRemoving] = useState(null)
+
+  useEffect(() => {
+    axios.get(`${API}/api/watchlist`).then(r => setWatchlist(r.data.tickers || []))
+  }, [])
+
+  const handleRemove = async (ticker) => {
+    setRemoving(ticker)
+    try {
+      await axios.delete(`${API}/api/watchlist/${ticker}`)
+      setWatchlist(prev => prev.filter(t => t !== ticker))
+    } catch {
+      alert("Failed to remove ticker")
+    }
+    setRemoving(null)
+  }
+
+  if (watchlist.length === 0) return null
+
+  return (
+    <div style={{background:"#faf8f4",borderRadius:14,padding:"14px 16px",
+      border:"1px solid #e8e4dc",marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:10,
+        textTransform:"uppercase",letterSpacing:"0.08em"}}>
+        My watchlist — {watchlist.length} ticker{watchlist.length !== 1 ? "s" : ""}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {watchlist.map(ticker => (
+          <div key={ticker} style={{display:"flex",alignItems:"center",gap:4,
+            background:"#f0ede8",borderRadius:8,padding:"4px 10px",
+            border:"1px solid #e8e4dc"}}>
+            <button onClick={() => onTickerClick(ticker)} style={{
+              fontFamily:"monospace",fontWeight:600,fontSize:12,
+              background:"none",border:"none",cursor:"pointer",color:"#3d3a36",padding:0
+            }}>{ticker}</button>
+            <button onClick={() => handleRemove(ticker)} style={{
+              background:"none",border:"none",cursor:"pointer",
+              color: removing === ticker ? "#9a9690" : "#d95f5f",
+              fontSize:12,padding:"0 2px",lineHeight:1
+            }}>
+              {removing === ticker ? "..." : "✕"}
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{fontSize:10,color:"#9a9690",marginTop:8}}>
+        Tracked tickers will appear in history after the next 7am pipeline run
+      </div>
+    </div>
+  )
+}
+
 function WatchlistAdd({ ticker, onAdded }) {
   const [status, setStatus] = useState("idle") // idle, loading, success, error
   const [message, setMessage] = useState("")
@@ -566,6 +620,12 @@ function HistoryTab({ onTickerClick }) {
 
   return (
     <div>
+      {/* Watchlist manager */}
+      <WatchlistManager onTickerClick={onTickerClick}/>
+
+      {/* Search + controls */}
+      <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}></div>
+      
       {/* Insight banner */}
       <div style={{background:"#ede9fe",border:"1px solid #c4b5fd",
         borderRadius:16,padding:"1.25rem 1.5rem",marginBottom:"1.5rem"}}>
