@@ -283,9 +283,11 @@ def get_sector_summary(scores):
 
     for sector, data in sector_data.items():
         tickers = data["tickers"]
+        valid_changes = [t["week_change_pct"] for t in tickers if t.get("week_change_pct") is not None]
         data["avg_change"] = round(
-            sum(t["week_change_pct"] for t in tickers) / len(tickers), 2
-        )
+            sum(valid_changes) / len(valid_changes), 2
+        ) if valid_changes else 0
+        
         data["top_score"] = round(
             max(t["composite_score"] for t in tickers), 1
         )

@@ -650,3 +650,15 @@ def remove_from_watchlist(ticker: str):
         return {"success": True, "ticker": ticker}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.get("/api/history/{ticker}")
+def get_ticker_history(ticker: str, days: int = 30):
+    from scoring.history import load_ticker_history
+    ticker = ticker.upper()
+    history = load_ticker_history(ticker, days=days)
+    return sanitize_floats({"ticker": ticker, "history": history})
+
+@app.get("/api/history")
+def get_all_history(days: int = 14):
+    from scoring.history import load_all_history
+    return sanitize_floats({"history": load_all_history(days=days)})

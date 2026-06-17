@@ -909,9 +909,11 @@ function TickerCard({ t, rank, onClick }) {
         <Sparkline data={t.price_history} width={160} height={28}/>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <span style={{fontSize:18,fontWeight:600}}>${fmt(t.latest_close)}</span>
+        <span style={{fontSize:18,fontWeight:600}}>
+          {t.latest_close ? `$${fmt(t.latest_close)}` : "—"}
+        </span>
         <span style={{fontSize:13,fontWeight:600,color:up?"#5a9e3a":"#d95f5f"}}>
-          {up?"+":""}{fmt(t.week_change_pct)}%
+          {t.latest_close ? `${up?"+":""}${fmt(t.week_change_pct)}%` : "—"}
         </span>
       </div>
       {t.reasoning?.thesis && (
@@ -962,7 +964,7 @@ function SectorBar({ sectors }) {
               background:s.avg_change>=0?"#5a9e3a":"#d95f5f",transition:"width 0.5s"}}/>
           </div>
           <div style={{fontSize:12,fontWeight:600,width:56,color:s.avg_change>=0?"#5a9e3a":"#d95f5f"}}>
-            {s.avg_change>=0?"+":""}{s.avg_change.toFixed(2)}%
+            {s.avg_change>=0?"+":""}{(s.avg_change||0).toFixed(2)}%
           </div>
         </div>
       ))}
@@ -1003,7 +1005,7 @@ function SectorDrilldown({ sectors, onTickerClick }) {
                   </span>
                 </div>
                 <span style={{fontSize:14,fontWeight:700,color:t.week_change_pct>=0?"#5a9e3a":"#d95f5f"}}>
-                  {t.week_change_pct>=0?"+":""}{t.week_change_pct.toFixed(2)}%
+                  {t.week_change_pct>=0?"+":""}{(t.week_change_pct||0).toFixed(2)}%
                 </span>
               </div>
               <div style={{background:"#e8e4dc",borderRadius:3,height:5,marginBottom:6}}>
@@ -1389,7 +1391,7 @@ export default function App() {
               {/* Summary cards */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:"2rem"}}>
                 {[
-                  {label:"Top sector", value:data.top_sector, sub:`+${data.top_sector_change}% avg this week`},
+                  {label:"Top sector", value:data.top_sector, sub:`${data.top_sector_change != null ? (data.top_sector_change >= 0 ? "+" : "") + Number(data.top_sector_change).toFixed(2) + "%" : "—"} avg this week`},
                   {label:"Tickers tracked", value:data.total_tickers, sub:"across all sectors"},
                   {label:"Top stock pick", value:data.top5_stocks?.[0]?.ticker, sub:`score ${data.top5_stocks?.[0]?.composite_score}/100`},
                   {label:"Top ETF pick", value:data.top5_etfs?.[0]?.ticker, sub:`score ${data.top5_etfs?.[0]?.composite_score}/100`},

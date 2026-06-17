@@ -1,5 +1,6 @@
 import yfinance as yf
 import json
+import math
 import os
 from datetime import datetime
 
@@ -216,6 +217,9 @@ def get_price_data(tickers):
             week_open = float(week_hist["Close"].iloc[0])
             latest_close = float(week_hist["Close"].iloc[-1])
             week_change_pct = ((latest_close - week_open) / week_open) * 100
+            
+            if math.isnan(week_change_pct) or math.isinf(week_change_pct):
+                week_change_pct = 0.0
 
             avg_vol = float(hist["Volume"].mean())
             latest_vol = float(hist["Volume"].iloc[-1])

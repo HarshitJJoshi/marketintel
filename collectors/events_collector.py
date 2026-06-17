@@ -36,7 +36,6 @@ def get_economic_events():
     economic_dates = [
         # June 2026
         {"date": "2026-06-11", "event": "CPI Report (May)", "type": "economic", "impact": "high"},
-        {"date": "2026-06-18", "event": "FOMC Rate Decision", "type": "fed", "impact": "high"},
         {"date": "2026-06-26", "event": "GDP Q1 Final", "type": "economic", "impact": "high"},
         {"date": "2026-07-02", "event": "Jobs Report (June)", "type": "economic", "impact": "high"},
         {"date": "2026-07-09", "event": "CPI Report (June)", "type": "economic", "impact": "high"},
