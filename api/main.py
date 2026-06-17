@@ -1,6 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import json
+import math
 import os
 from datetime import datetime
 
@@ -216,6 +217,18 @@ def generate_reasoning(ticker_data, price_data_map):
 def root():
     return {"status": "ok", "message": "MarketIntel API running"}
 
+def sanitize_floats(obj):
+    """Replace inf/nan with None for JSON serialization"""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_floats(v) for v in obj]
+    return obj
+
 @app.get("/api/summary")
 def get_summary():
     data = load_latest_scores()
@@ -252,7 +265,7 @@ def get_summary():
 
     top_sector = sectors[0] if sectors else {}
 
-    return {
+    return sanitize_floats({
         "generated_at":      data["generated_at"],
         "total_tickers":     len(scores),
         "top_sector":        top_sector.get("sector", ""),
@@ -261,7 +274,7 @@ def get_summary():
         "top5_etfs":         top5_etfs,
         "top5":              top5_stocks[:5],
         "sectors":           sectors
-    }
+    })
 
 @app.get("/api/sectors")
 def get_sectors():

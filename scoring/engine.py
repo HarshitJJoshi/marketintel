@@ -63,7 +63,8 @@ def calculate_rsi(prices, period=14):
     return round(100 - (100 / (1 + rs)), 2)
 
 def compute_scores(price_data, sentiment_data, stocktwits_data={},
-                   insider_data={}, institutional_data={}, fundamental_data={}):
+                   insider_data={}, institutional_data={},
+                   trends_data={}, options_data={}):
     scores = []
 
     all_changes = [abs(p["week_change_pct"]) for p in price_data]
@@ -80,15 +81,17 @@ def compute_scores(price_data, sentiment_data, stocktwits_data={},
         st = stocktwits_data.get(ticker, {})
         insider = insider_data.get(ticker, {})
         institutional = institutional_data.get(ticker, {})
+        trends = trends_data.get(ticker, {})
+        options = options_data.get(ticker, {})
 
-        # --- Price momentum (25% weight) ---
+        # --- Price momentum ---
         week_change = price["week_change_pct"]
         price_score = normalize(week_change, -max_change, max_change)
 
         # --- RSI calculation ---
         price_history = price.get("price_history", [])
         rsi = calculate_rsi(price_history)
-        rsi_score = 0.5  # neutral default
+        rsi_score = 0.5
         if rsi:
             if rsi < 30:
                 rsi_score = 0.85  # oversold = opportunity
@@ -109,45 +112,45 @@ def compute_scores(price_data, sentiment_data, stocktwits_data={},
         if year_high and year_low and latest_close:
             range_pct = (latest_close - year_low) / (year_high - year_low) if year_high != year_low else 0.5
             if range_pct > 0.95:
-                breakout_score = 0.85  # near 52w high = breakout
+                breakout_score = 0.85
             elif range_pct > 0.8:
                 breakout_score = 0.7
             elif range_pct < 0.2:
-                breakout_score = 0.3  # near 52w low
+                breakout_score = 0.3
             else:
                 breakout_score = 0.5
 
         # Combined price signal
         combined_price = (price_score * 0.6 + rsi_score * 0.2 + breakout_score * 0.2)
 
-        # --- Sentiment (25% weight) ---
+        # --- Sentiment ---
         avg_sentiment = sentiment.get("avg_sentiment", 0)
         sentiment_score = normalize(avg_sentiment, -1, 1)
 
-        # --- Social buzz (15% weight) ---
+        # --- Social buzz ---
         mentions = sentiment.get("mentions", 0)
         reddit_score = sentiment.get("total_reddit_score", 0)
         mention_score = normalize(mentions, 0, max_mentions)
         reddit_score_norm = normalize(reddit_score, 0, max_reddit)
         buzz_score = (mention_score * 0.5) + (reddit_score_norm * 0.5)
 
-        # --- StockTwits (10% weight) ---
+        # --- StockTwits ---
         st_raw = st.get("stocktwits_score", 0)
         st_score = normalize(st_raw, -1, 1)
 
-        # --- Fundamental score (15% weight) ---
+        # --- Fundamentals ---
         fund_raw = price.get("fundamental_score", 50)
         fund_score = fund_raw / 100
 
-        # --- Insider signal (5% weight) ---
-        insider_score = 0.5  # neutral default
+        # --- Insider signal ---
+        insider_score = 0.5
         insider_count = insider.get("count", 0)
         if insider_count > 3:
             insider_score = 0.8
         elif insider_count > 0:
             insider_score = 0.65
 
-        # --- Institutional signal (5% weight) ---
+        # --- Institutional signal ---
         inst_score = 0.5
         major_count = institutional.get("major_count", 0)
         if major_count >= 3:
@@ -157,19 +160,39 @@ def compute_scores(price_data, sentiment_data, stocktwits_data={},
         elif major_count >= 1:
             inst_score = 0.6
 
-        # --- Composite score 0-100 ---
+        # --- Google Trends signal ---
+        trends_score = 0.5
+        if trends:
+            raw_score = trends.get("score", 50)
+            trend_dir = trends.get("trend", "stable")
+            trends_score = raw_score / 100
+            if trend_dir == "rising":
+                trends_score = min(1.0, trends_score + 0.15)
+            elif trend_dir == "falling":
+                trends_score = max(0.0, trends_score - 0.15)
+
+        # --- Options flow signal ---
+        options_score = 0.5
+        if options:
+            raw = options.get("score", 50)
+            options_score = raw / 100
+            if options.get("unusual_activity"):
+                options_score = min(1.0, options_score + 0.1)
+
+        # --- Composite score (all weights sum to 1.0) ---
         composite = (
-            combined_price * 0.25 +
-            sentiment_score * 0.25 +
-            buzz_score     * 0.15 +
-            st_score       * 0.10 +
-            fund_score     * 0.15 +
-            insider_score  * 0.05 +
-            inst_score     * 0.05
+            combined_price * 0.23 +
+            sentiment_score * 0.23 +
+            buzz_score      * 0.14 +
+            st_score        * 0.10 +
+            fund_score      * 0.14 +
+            insider_score   * 0.05 +
+            inst_score      * 0.05 +
+            trends_score    * 0.03 +
+            options_score   * 0.03
         ) * 100
 
-        # --- Confluence bonus ---
-        # When multiple signals align, add confidence boost
+        # --- Confluence bonus (9 signals now) ---
         bullish_signals = sum([
             1 if week_change > 5 else 0,
             1 if avg_sentiment > 0.1 else 0,
@@ -178,17 +201,19 @@ def compute_scores(price_data, sentiment_data, stocktwits_data={},
             1 if fund_raw > 60 else 0,
             1 if major_count >= 2 else 0,
             1 if insider_count > 0 else 0,
+            1 if trends_score > 0.6 else 0,
+            1 if options_score > 0.6 else 0,
         ])
-        if bullish_signals >= 5:
-            composite = min(100, composite * 1.08)  # 8% boost for high confluence
-        elif bullish_signals >= 4:
+        if bullish_signals >= 6:
+            composite = min(100, composite * 1.08)
+        elif bullish_signals >= 5:
             composite = min(100, composite * 1.04)
-        
-        # Penalize suspicious signals — high sentiment but negative price
+
+        # --- Penalties ---
+        # High sentiment but negative price = suspicious
         if week_change < -3 and avg_sentiment > 0.5:
-            composite *= 0.85  # 15% penalty for sentiment/price mismatch
-        
-        # Penalize stocks with no social signal at all
+            composite *= 0.85
+        # No social signal at all + negative price
         if mentions == 0 and st_raw == 0 and week_change < 0:
             composite *= 0.90
 
@@ -214,6 +239,12 @@ def compute_scores(price_data, sentiment_data, stocktwits_data={},
             "breakout_score": round(breakout_score * 100, 1),
             "insider_count": insider_count,
             "major_institutions": major_count,
+            "trends_score": round(trends_score * 100, 1),
+            "options_score": round(options_score * 100, 1),
+            "options_signal": options.get("signal", "neutral"),
+            "pc_ratio": options.get("pc_ratio"),
+            "unusual_options": options.get("unusual_activity", False),
+            "search_trend": trends.get("trend", "stable"),
             "bullish_signals": bullish_signals,
             "price_score": round(combined_price * 100, 1),
             "sentiment_score": round(sentiment_score * 100, 1),
@@ -227,14 +258,14 @@ def compute_scores(price_data, sentiment_data, stocktwits_data={},
     # Sort by composite score
     sorted_scores = sorted(scores, key=lambda x: x["composite_score"], reverse=True)
 
-    # Apply top-pick filter — penalize negative price movers more aggressively
+    # Penalize negative price movers from top ranking
     for s in sorted_scores:
         if s["week_change_pct"] < -2 and not s["is_etf"]:
             s["composite_score"] = round(s["composite_score"] * 0.80, 1)
             s["top_pick_filtered"] = True
 
-    # Re-sort after penalty
     return sorted(sorted_scores, key=lambda x: x["composite_score"], reverse=True)
+
 
 def get_sector_summary(scores):
     sector_data = {}
@@ -261,6 +292,7 @@ def get_sector_summary(scores):
         data["top_5"] = sorted(tickers, key=lambda x: x["composite_score"], reverse=True)[:5]
 
     return sorted(sector_data.values(), key=lambda x: x["avg_change"], reverse=True)
+
 
 if __name__ == "__main__":
     print("Loading data...")
@@ -293,13 +325,31 @@ if __name__ == "__main__":
             inst_data = json.load(f)
         print(f"Institutional: {len(inst_data)} tickers")
 
+    # Load trends data
+    trends_files = sorted([f for f in os.listdir("data/raw") if f.startswith("trends_")])
+    trends_data = {}
+    if trends_files:
+        with open(f"data/raw/{trends_files[-1]}") as f:
+            trends_data = json.load(f)
+        print(f"Trends: {len(trends_data)} tickers")
+
+    # Load options data
+    options_files = sorted([f for f in os.listdir("data/raw") if f.startswith("options_")])
+    options_data = {}
+    if options_files:
+        with open(f"data/raw/{options_files[-1]}") as f:
+            options_data = json.load(f)
+        print(f"Options: {len(options_data)} tickers")
+
     print(f"Prices: {len(price_data)} tickers")
     print(f"Sentiment: {len(sentiment_data)} tickers")
 
     print("\nComputing composite scores...")
     scores = compute_scores(price_data, sentiment_data, stocktwits_data,
                            insider_data=insider_data,
-                           institutional_data=inst_data)
+                           institutional_data=inst_data,
+                           trends_data=trends_data,
+                           options_data=options_data)
     sectors = get_sector_summary(scores)
 
     print("\n" + "="*60)
@@ -329,9 +379,13 @@ if __name__ == "__main__":
               f"Reddit: {t['mentions']} mentions")
         print(f"   Fundamental: {t.get('fundamental_score', 50)}  "
               f"RSI: {t.get('rsi', '—')}  "
-              f"Insider filings: {t.get('insider_count', 0)}  "
-              f"Major institutions: {t.get('major_institutions', 0)}")
-        print(f"   Bullish signals: {t.get('bullish_signals', 0)}/7")
+              f"Insider: {t.get('insider_count', 0)}  "
+              f"Institutions: {t.get('major_institutions', 0)}")
+        print(f"   Trends: {t.get('search_trend', '—')}  "
+              f"Options: {t.get('options_signal', '—')}  "
+              f"P/C: {t.get('pc_ratio', '—')}  "
+              f"Unusual: {t.get('unusual_options', False)}")
+        print(f"   Bullish signals: {t.get('bullish_signals', 0)}/9")
 
     os.makedirs("data/processed", exist_ok=True)
     outfile = f"data/processed/scores_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.json"

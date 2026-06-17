@@ -94,6 +94,44 @@ def run_pipeline():
     except Exception as e:
         log(f"StockTwits: skipped — {e}")
 
+    # Step 3c — Google Trends
+    log("Step 3c: Fetching Google Trends signals...")
+    try:
+        from collectors.trends_collector import get_trends_signal, save_trends
+        stock_tickers = [t for t in dynamic_watchlist if t not in
+                        ["SOXX","SMH","XLV","XLF","ICLN","XLK","SPY","QQQ","IBB","ARKB"]][:20]
+        trends_data = get_trends_signal(stock_tickers)
+        save_trends(trends_data)
+        rising = sum(1 for v in trends_data.values() if v.get("trend") == "rising")
+        log(f"Trends: {rising} tickers with rising search interest")
+    except Exception as e:
+        log(f"Trends: skipped — {e}")
+        trends_data = {}
+
+    # Step 3d — Options flow
+    log("Step 3d: Fetching options flow...")
+    try:
+        from collectors.options_collector import collect_options_flow, save_options
+        stock_tickers = [t for t in dynamic_watchlist if t not in
+                        ["SOXX","SMH","XLV","XLF","ICLN","XLK","SPY","QQQ","IBB","ARKB"]][:20]
+        options_data = collect_options_flow(stock_tickers)
+        save_options(options_data)
+        unusual = sum(1 for v in options_data.values() if v.get("unusual_activity"))
+        log(f"Options: {unusual} tickers with unusual activity")
+    except Exception as e:
+        log(f"Options: skipped — {e}")
+        options_data = {}
+
+    # Step 3e — Market events
+    log("Step 3e: Updating market events calendar...")
+    try:
+        from collectors.events_collector import get_upcoming_events, save_events
+        events = get_upcoming_events(days_ahead=14)
+        save_events(events)
+        log(f"Events: {len(events)} upcoming events saved")
+    except Exception as e:
+        log(f"Events: skipped — {e}")
+
     # Step 4 — Prices with dynamic watchlist
     log("Step 4: Fetching prices for dynamic watchlist...")
     prices = get_price_data(dynamic_watchlist)
