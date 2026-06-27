@@ -9,7 +9,7 @@ app = FastAPI(title="MarketIntel API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"]
 )
@@ -79,8 +79,6 @@ def generate_reasoning(ticker_data, price_data_map):
     reddit_score = ticker_data.get("total_reddit_score", 0)
     p = price_data_map.get(ticker, {})
     vol_spike = p.get("volume_spike", 1.0)
-
-    # New signal fields
     revenue_growth = ticker_data.get("revenue_growth")
     profit_margin = ticker_data.get("profit_margin")
     debt_equity = ticker_data.get("debt_equity")
@@ -89,11 +87,9 @@ def generate_reasoning(ticker_data, price_data_map):
     insider_count = ticker_data.get("insider_count", 0)
     bullish_signals = ticker_data.get("bullish_signals", 0)
 
-    # Initialize lists FIRST
     reasons = []
     watches = []
 
-    # Price signals
     if price_score > 70:
         reasons.append(f"strong price momentum (+{price_chg:.1f}% this week)")
     elif price_score > 55:
@@ -108,8 +104,6 @@ def generate_reasoning(ticker_data, price_data_map):
         reasons.append(f"unusual volume ({vol_spike}x average) — institutional interest likely")
     if buzz > 60:
         reasons.append("trending across multiple platforms")
-
-    # Fundamental signals
     if revenue_growth and revenue_growth > 15:
         reasons.append(f"strong revenue growth (+{revenue_growth}% YoY)")
     if profit_margin and profit_margin > 20:
@@ -121,12 +115,10 @@ def generate_reasoning(ticker_data, price_data_map):
     if rsi and rsi < 35:
         reasons.append(f"RSI {rsi} — oversold, potential bounce setup")
     if bullish_signals >= 5:
-        reasons.append(f"rare high-confluence setup — {bullish_signals}/7 signals aligned")
-
+        reasons.append(f"rare high-confluence setup — {bullish_signals}/12 signals aligned")
     if not reasons:
         reasons.append("composite signal from price, sentiment and buzz")
 
-    # Watches
     if sentiment < -0.1 and price_chg > 0:
         watches.append("price rising despite bearish sentiment — could reverse")
     if vol_spike > 3:
@@ -163,15 +155,15 @@ def generate_reasoning(ticker_data, price_data_map):
         reddit_interp += " Mentioned often but posts aren't getting upvoted much — could be noise."
 
     if sentiment > 0.3:
-        sentiment_interp = "Strongly bullish — the language used around this stock is very positive. People are excited. Good momentum signal but watch for overconfidence."
+        sentiment_interp = "Strongly bullish — the language used around this stock is very positive."
     elif sentiment > 0.1:
         sentiment_interp = "Mildly bullish — more positive than negative discussion. Supportive signal for a potential entry."
     elif sentiment > -0.1:
-        sentiment_interp = "Neutral — mixed or balanced discussion. No strong crowd conviction either way. Let price action lead."
+        sentiment_interp = "Neutral — mixed or balanced discussion. No strong crowd conviction either way."
     elif sentiment > -0.3:
-        sentiment_interp = "Mildly bearish — more negative than positive discussion. Could mean concerns are building. Tread carefully."
+        sentiment_interp = "Mildly bearish — more negative than positive discussion. Tread carefully."
     else:
-        sentiment_interp = "Strongly bearish — crowd sentiment is negative. This could be a contrarian opportunity OR a warning sign — cross-check with fundamentals before acting."
+        sentiment_interp = "Strongly bearish — crowd sentiment is negative. Cross-check with fundamentals before acting."
 
     if sentiment > 0.1 and mentions > 5 and price_chg > 0:
         signal_call = "STRONG SIGNAL"
@@ -184,11 +176,11 @@ def generate_reasoning(ticker_data, price_data_map):
     elif sentiment < -0.1 and price_chg > 3:
         signal_call = "WATCH CAREFULLY"
         signal_color = "amber"
-        signal_desc = "Price is rising but crowd sentiment is negative. Could reverse — wait for sentiment to confirm before entering."
+        signal_desc = "Price is rising but crowd sentiment is negative. Could reverse."
     elif price_chg > 5 and mentions == 0:
         signal_call = "PRICE ONLY"
         signal_color = "amber"
-        signal_desc = "Strong price move with no social signal. Likely institutional — follow the money but no crowd confirmation yet."
+        signal_desc = "Strong price move with no social signal. Likely institutional."
     elif sentiment < -0.2 and price_chg < 0:
         signal_call = "AVOID SHORT TERM"
         signal_color = "red"
@@ -218,7 +210,6 @@ def root():
     return {"status": "ok", "message": "MarketIntel API running"}
 
 def sanitize_floats(obj):
-    """Replace inf/nan with None for JSON serialization"""
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None
@@ -229,6 +220,29 @@ def sanitize_floats(obj):
         return [sanitize_floats(v) for v in obj]
     return obj
 
+def enrich_ticker(t, price_map):
+    p = price_map.get(t["ticker"], {})
+    return {
+        **t,
+        "volume_spike":  p.get("volume_spike", 1.0),
+        "earnings_date": p.get("earnings_date"),
+        "price_history": p.get("price_history", []),
+        "year_high":     p.get("year_high"),
+        "year_low":      p.get("year_low"),
+        "market_cap":    p.get("market_cap"),
+        "pe_ratio":      p.get("pe_ratio"),
+        "latest_close":  p.get("latest_close"),
+    }
+
+def get_price_map():
+    price_map = {}
+    price_files = sorted([f for f in os.listdir("data/raw") if f.startswith("prices_")])
+    if price_files:
+        with open(f"data/raw/{price_files[-1]}") as f:
+            for p in json.load(f):
+                price_map[p["ticker"]] = p
+    return price_map
+
 @app.get("/api/summary")
 def get_summary():
     data = load_latest_scores()
@@ -237,13 +251,7 @@ def get_summary():
 
     scores = data["scores"]
     sectors = data["sectors"]
-
-    price_map = {}
-    price_files = sorted([f for f in os.listdir("data/raw") if f.startswith("prices_")])
-    if price_files:
-        with open(f"data/raw/{price_files[-1]}") as f:
-            for p in json.load(f):
-                price_map[p["ticker"]] = p
+    price_map = get_price_map()
 
     stocks = [s for s in scores if not s.get("is_etf")]
     etfs   = [s for s in scores if s.get("is_etf")]
@@ -276,6 +284,28 @@ def get_summary():
         "sectors":           sectors
     })
 
+@app.get("/api/scores")
+def get_all_scores():
+    """Return all scores with price data enriched — used for filtering"""
+    data = load_latest_scores()
+    if not data:
+        return {"error": "No data found"}
+
+    scores = data["scores"]
+    price_map = get_price_map()
+
+    enriched = []
+    for t in scores:
+        t = enrich_ticker(t, price_map)
+        t["reasoning"] = generate_reasoning(t, price_map)
+        enriched.append(t)
+
+    return sanitize_floats({
+        "generated_at": data["generated_at"],
+        "total": len(enriched),
+        "scores": enriched
+    })
+
 @app.get("/api/sectors")
 def get_sectors():
     data = load_latest_scores()
@@ -291,14 +321,8 @@ def get_ticker_detail(ticker: str):
         return {"error": "No data found"}
 
     score_data = next((s for s in data["scores"] if s["ticker"] == ticker), {})
-
-    price_data = {}
-    price_files = sorted([f for f in os.listdir("data/raw") if f.startswith("prices_")])
-    if price_files:
-        with open(f"data/raw/{price_files[-1]}") as f:
-            for p in json.load(f):
-                if p["ticker"] == ticker:
-                    price_data = p
+    price_map = get_price_map()
+    price_data = price_map.get(ticker, {})
 
     COMPANY_NAMES = {
         "MSFT": ["microsoft"], "AAPL": ["apple"], "NVDA": ["nvidia"],
@@ -313,7 +337,9 @@ def get_ticker_detail(ticker: str):
         "SOXX": ["semiconductor"], "SMH": ["semiconductor"],
         "XLK": ["technology etf"], "XLV": ["healthcare etf"],
         "XLF": ["financial etf"], "ICLN": ["clean energy"],
-        "QQQ": ["nasdaq", "qqq"], "SPY": ["s&p 500", "spy etf"]
+        "QQQ": ["nasdaq", "qqq"], "SPY": ["s&p 500", "spy etf"],
+        "COST": ["costco"], "SBUX": ["starbucks"], "NET": ["cloudflare"],
+        "UNH": ["unitedhealth"], "ABBV": ["abbvie"], "DHR": ["danaher"],
     }
 
     search_terms = [ticker.lower()] + COMPANY_NAMES.get(ticker, [])
@@ -332,12 +358,12 @@ def get_ticker_detail(ticker: str):
                         "published_at": a.get("published_at", "")
                     })
 
-    return {
+    return sanitize_floats({
         "ticker":     ticker,
         "score_data": score_data,
         "price_data": price_data,
         "headlines":  headlines[:8]
-    }
+    })
 
 @app.get("/api/ticker/{ticker}")
 def get_ticker(ticker: str):
@@ -373,12 +399,12 @@ def get_ticker_history(ticker: str, days: int = 30):
     from scoring.history import load_ticker_history
     ticker = ticker.upper()
     history = load_ticker_history(ticker, days=days)
-    return {"ticker": ticker, "history": history}
+    return sanitize_floats({"ticker": ticker, "history": history})
 
 @app.get("/api/history")
 def get_all_history(days: int = 14):
     from scoring.history import load_all_history
-    return {"history": load_all_history(days=days)}
+    return sanitize_floats({"history": load_all_history(days=days)})
 
 @app.get("/api/strategies")
 def get_strategies():
@@ -387,211 +413,102 @@ def get_strategies():
         return {"error": "No data found"}
 
     scores = data["scores"]
-    sectors = data["sectors"]
-
-    # Load price data for extra context
-    price_map = {}
-    price_files = sorted([f for f in os.listdir("data/raw") if f.startswith("prices_")])
-    if price_files:
-        with open(f"data/raw/{price_files[-1]}") as f:
-            for p in json.load(f):
-                price_map[p["ticker"]] = p
+    price_map = get_price_map()
 
     stocks = [s for s in scores if not s.get("is_etf")]
     etfs = [s for s in scores if s.get("is_etf")]
 
     def enrich(t):
         p = price_map.get(t["ticker"], {})
-        return {
-            **t,
-            "latest_close": p.get("latest_close"),
-            "volume_spike": p.get("volume_spike", 1.0),
-            "year_high": p.get("year_high"),
-            "year_low": p.get("year_low"),
-            "earnings_date": p.get("earnings_date"),
-            "market_cap": p.get("market_cap"),
-            "pe_ratio": p.get("pe_ratio"),
-        }
+        return {**t, "latest_close": p.get("latest_close"), "volume_spike": p.get("volume_spike", 1.0),
+                "year_high": p.get("year_high"), "year_low": p.get("year_low"),
+                "earnings_date": p.get("earnings_date"), "market_cap": p.get("market_cap"), "pe_ratio": p.get("pe_ratio")}
 
     def momentum_score(t):
-        return (
-            t.get("week_change_pct", 0) * 0.4 +
-            t.get("avg_sentiment", 0) * 20 +
-            t.get("stocktwits_score", 0) * 15 +
-            t.get("mentions", 0) * 0.5
-        )
+        return (t.get("week_change_pct", 0) * 0.4 + t.get("avg_sentiment", 0) * 20 +
+                t.get("stocktwits_score", 0) * 15 + t.get("mentions", 0) * 0.5)
 
     def safety_score(t):
         vol = price_map.get(t["ticker"], {}).get("volume_spike", 1.0)
         chg = t.get("week_change_pct", 0)
         pe = price_map.get(t["ticker"], {}).get("pe_ratio") or 0
-        # Penalize negative price movement heavily for conservative
         price_penalty = 30 if chg < 0 else 0
-        safety = 100 - (vol * 10) - (abs(chg) * 0.5) - (max(0, pe - 30) * 0.2) - price_penalty
-        return max(0, safety)
+        return max(0, 100 - (vol * 10) - (abs(chg) * 0.5) - (max(0, pe - 30) * 0.2) - price_penalty)
 
     top_stocks = [enrich(s) for s in stocks[:15]]
     top_etfs = [enrich(e) for e in etfs[:8]]
-
-    # Sort by different criteria
     momentum_stocks = sorted(top_stocks, key=momentum_score, reverse=True)
-    safe_stocks = sorted(top_stocks, key=lambda t: (
-        t.get("composite_score", 0) * 0.4 +
-        safety_score(t) * 0.6
-    ), reverse=True)
+    safe_stocks = sorted(top_stocks, key=lambda t: t.get("composite_score", 0) * 0.4 + safety_score(t) * 0.6, reverse=True)
 
     def build_aggressive():
-        picks = [s for s in momentum_stocks if s.get("week_change_pct", 0) > 0][:3]
-        if len(picks) < 3:
-            picks = momentum_stocks[:3]
+        picks = [s for s in momentum_stocks if s.get("week_change_pct", 0) > 0][:3] or momentum_stocks[:3]
         etf_pick = top_etfs[0] if top_etfs else None
         allocations = []
         for i, t in enumerate(picks):
             pct = [50, 30, 15][i]
-            allocations.append({
-                "ticker": t["ticker"],
-                "type": "Stock",
-                "sector": t["sector"],
-                "allocation_pct": pct,
-                "composite_score": t["composite_score"],
+            allocations.append({"ticker": t["ticker"], "type": "Stock", "sector": t["sector"],
+                "allocation_pct": pct, "composite_score": t["composite_score"],
                 "week_change_pct": t["week_change_pct"],
-                "rationale": f"Score {t['composite_score']}/100 — {'+' if t['week_change_pct'] >= 0 else ''}{t['week_change_pct']:.1f}% momentum this week",
-                "horizon": "Short to medium term (days–weeks)",
-                "earnings_date": t.get("earnings_date"),
-            })
+                "rationale": f"Score {t['composite_score']}/100 — {'+' if t['week_change_pct'] >= 0 else ''}{t['week_change_pct']:.1f}% momentum",
+                "horizon": "Short to medium term (days–weeks)", "earnings_date": t.get("earnings_date")})
         if etf_pick:
-            allocations.append({
-                "ticker": etf_pick["ticker"],
-                "type": "ETF",
-                "sector": etf_pick["sector"],
-                "allocation_pct": 5,
-                "composite_score": etf_pick["composite_score"],
+            allocations.append({"ticker": etf_pick["ticker"], "type": "ETF", "sector": etf_pick["sector"],
+                "allocation_pct": 5, "composite_score": etf_pick["composite_score"],
                 "week_change_pct": etf_pick["week_change_pct"],
-                "rationale": "Small ETF hedge to reduce single-stock risk",
-                "horizon": "Flexible",
-                "earnings_date": None,
-            })
-        return {
-            "name": "Aggressive",
-            "emoji": "🔥",
-            "tagline": "High risk, high reward — momentum-driven picks",
-            "risk_level": 3,
-            "expected_horizon": "Days to weeks",
-            "description": "Bets on the strongest momentum signals from Reddit, StockTwits and price action. These are the stocks the crowd is most excited about right now. Volatile — could move 10-20% either way quickly.",
-            "stock_pct": 95,
-            "etf_pct": 5,
+                "rationale": "Small ETF hedge", "horizon": "Flexible", "earnings_date": None})
+        return {"name": "Aggressive", "emoji": "🔥", "tagline": "High risk, high reward — momentum-driven picks",
+            "risk_level": 3, "expected_horizon": "Days to weeks", "stock_pct": 95, "etf_pct": 5,
+            "description": "Bets on the strongest momentum signals. Volatile — could move 10-20% either way quickly.",
             "allocations": allocations,
-            "warnings": [
-                "High volatility — only invest what you can afford to lose",
-                "Momentum can reverse fast — set stop losses",
-                "Check earnings dates before entering",
-            ]
-        }
+            "warnings": ["High volatility — only invest what you can afford to lose",
+                "Momentum can reverse fast — set stop losses", "Check earnings dates before entering"]}
 
     def build_balanced():
-        picks = [s for s in top_stocks if s.get("composite_score", 0) >= 50][:2]
-        if len(picks) < 2:
-            picks = top_stocks[:2]
+        picks = [s for s in top_stocks if s.get("composite_score", 0) >= 50][:2] or top_stocks[:2]
         etf_picks = top_etfs[:2]
         allocations = []
-        stock_allocs = [35, 25]
-        etf_allocs = [25, 15]
         for i, t in enumerate(picks):
-            pct = stock_allocs[i] if i < len(stock_allocs) else 10
-            allocations.append({
-                "ticker": t["ticker"],
-                "type": "Stock",
-                "sector": t["sector"],
-                "allocation_pct": pct,
-                "composite_score": t["composite_score"],
+            allocations.append({"ticker": t["ticker"], "type": "Stock", "sector": t["sector"],
+                "allocation_pct": [35, 25][i], "composite_score": t["composite_score"],
                 "week_change_pct": t["week_change_pct"],
                 "rationale": f"Strong composite score {t['composite_score']}/100 with confirmed social signal",
-                "horizon": "Medium term (1–3 months)",
-                "earnings_date": t.get("earnings_date"),
-            })
+                "horizon": "Medium term (1–3 months)", "earnings_date": t.get("earnings_date")})
         for i, e in enumerate(etf_picks):
-            pct = etf_allocs[i] if i < len(etf_allocs) else 10
-            allocations.append({
-                "ticker": e["ticker"],
-                "type": "ETF",
-                "sector": e["sector"],
-                "allocation_pct": pct,
-                "composite_score": e["composite_score"],
+            allocations.append({"ticker": e["ticker"], "type": "ETF", "sector": e["sector"],
+                "allocation_pct": [25, 15][i], "composite_score": e["composite_score"],
                 "week_change_pct": e["week_change_pct"],
-                "rationale": f"Sector ETF providing broad exposure with lower single-stock risk",
-                "horizon": "Medium to long term",
-                "earnings_date": None,
-            })
-        return {
-            "name": "Balanced",
-            "emoji": "⚖️",
-            "tagline": "Mix of conviction stocks and sector ETFs",
-            "risk_level": 2,
-            "expected_horizon": "1 to 3 months",
-            "description": "Combines the top scoring stocks with sector ETFs for diversification. You get exposure to momentum plays while ETFs cushion against individual stock blowups.",
-            "stock_pct": 60,
-            "etf_pct": 40,
+                "rationale": "Sector ETF providing broad exposure with lower single-stock risk",
+                "horizon": "Medium to long term", "earnings_date": None})
+        return {"name": "Balanced", "emoji": "⚖️", "tagline": "Mix of conviction stocks and sector ETFs",
+            "risk_level": 2, "expected_horizon": "1 to 3 months", "stock_pct": 60, "etf_pct": 40,
+            "description": "Combines top scoring stocks with sector ETFs for diversification.",
             "allocations": allocations,
-            "warnings": [
-                "Still exposed to sector-wide downturns",
-                "Rebalance monthly as scores update",
-            ]
-        }
+            "warnings": ["Still exposed to sector-wide downturns", "Rebalance monthly as scores update"]}
 
     def build_conservative():
         etf_picks = top_etfs[:3]
         safe_pick = safe_stocks[0] if safe_stocks else None
         allocations = []
-        etf_allocs = [40, 30, 20]
         for i, e in enumerate(etf_picks):
-            pct = etf_allocs[i] if i < len(etf_allocs) else 10
-            allocations.append({
-                "ticker": e["ticker"],
-                "type": "ETF",
-                "sector": e["sector"],
-                "allocation_pct": pct,
-                "composite_score": e["composite_score"],
+            allocations.append({"ticker": e["ticker"], "type": "ETF", "sector": e["sector"],
+                "allocation_pct": [40, 30, 20][i], "composite_score": e["composite_score"],
                 "week_change_pct": e["week_change_pct"],
-                "rationale": f"Diversified ETF exposure — reduced single-stock risk",
-                "horizon": "Long term (6+ months)",
-                "earnings_date": None,
-            })
+                "rationale": "Diversified ETF exposure — reduced single-stock risk",
+                "horizon": "Long term (6+ months)", "earnings_date": None})
         if safe_pick:
-            allocations.append({
-                "ticker": safe_pick["ticker"],
-                "type": "Stock",
-                "sector": safe_pick["sector"],
-                "allocation_pct": 10,
-                "composite_score": safe_pick["composite_score"],
+            allocations.append({"ticker": safe_pick["ticker"], "type": "Stock", "sector": safe_pick["sector"],
+                "allocation_pct": 10, "composite_score": safe_pick["composite_score"],
                 "week_change_pct": safe_pick["week_change_pct"],
-                "rationale": f"Single high-conviction stock with score {safe_pick['composite_score']}/100 and stable signals",
-                "horizon": "Long term",
-                "earnings_date": safe_pick.get("earnings_date"),
-            })
-        return {
-            "name": "Conservative",
-            "emoji": "🛡️",
-            "tagline": "ETF-heavy, low volatility, long term",
-            "risk_level": 1,
-            "expected_horizon": "6+ months",
-            "description": "Mostly ETFs for broad market exposure with one high-conviction stock. Designed to grow steadily over time with minimal panic-inducing volatility.",
-            "stock_pct": 10,
-            "etf_pct": 90,
+                "rationale": f"Single high-conviction stock, score {safe_pick['composite_score']}/100",
+                "horizon": "Long term", "earnings_date": safe_pick.get("earnings_date")})
+        return {"name": "Conservative", "emoji": "🛡️", "tagline": "ETF-heavy, low volatility, long term",
+            "risk_level": 1, "expected_horizon": "6+ months", "stock_pct": 10, "etf_pct": 90,
+            "description": "Mostly ETFs for broad market exposure with one high-conviction stock.",
             "allocations": allocations,
-            "warnings": [
-                "Lower upside — these won't 10x",
-                "Best held for 6+ months to see meaningful returns",
-            ]
-        }
+            "warnings": ["Lower upside — these won't 10x", "Best held for 6+ months"]}
 
-    return {
-        "generated_at": data["generated_at"],
-        "strategies": [
-            build_aggressive(),
-            build_balanced(),
-            build_conservative(),
-        ]
-    }
+    return sanitize_floats({"generated_at": data["generated_at"],
+        "strategies": [build_aggressive(), build_balanced(), build_conservative()]})
 
 @app.get("/api/events")
 def get_events(days: int = 14):
@@ -616,24 +533,19 @@ def get_watchlist():
 def add_to_watchlist(ticker: str):
     ticker = ticker.upper().strip()
     try:
-        # Validate ticker exists on yfinance
         import yfinance as yf
         info = yf.Ticker(ticker).info
         if not info.get("regularMarketPrice") and not info.get("currentPrice"):
             return {"success": False, "error": f"{ticker} not found on markets"}
-
-        # Load existing
         try:
             with open("data/watchlist.json") as f:
                 data = json.load(f)
         except:
             data = {"tickers": []}
-
         if ticker not in data["tickers"]:
             data["tickers"].append(ticker)
             with open("data/watchlist.json", "w") as f:
                 json.dump(data, f, indent=2)
-
         return {"success": True, "ticker": ticker, "message": f"{ticker} added to watchlist — will appear in history after next pipeline run"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -651,14 +563,18 @@ def remove_from_watchlist(ticker: str):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@app.get("/api/history/{ticker}")
-def get_ticker_history(ticker: str, days: int = 30):
-    from scoring.history import load_ticker_history
-    ticker = ticker.upper()
-    history = load_ticker_history(ticker, days=days)
-    return sanitize_floats({"ticker": ticker, "history": history})
+@app.get("/api/fear-greed")
+def get_fear_greed():
+    try:
+        with open("data/processed/fear_greed.json") as f:
+            return json.load(f)
+    except:
+        return {"value": None, "description": "unavailable", "signal": "neutral", "context": ""}
 
-@app.get("/api/history")
-def get_all_history(days: int = 14):
-    from scoring.history import load_all_history
-    return sanitize_floats({"history": load_all_history(days=days)})
+@app.get("/api/vix")
+def get_vix():
+    try:
+        with open("data/processed/vix.json") as f:
+            return json.load(f)
+    except:
+        return {"value": None, "signal": "neutral", "context": ""}

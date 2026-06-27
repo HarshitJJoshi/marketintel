@@ -10,6 +10,52 @@ const fmtCap = (n) => {
   return `$${(n/1e6).toFixed(0)}M`
 }
 
+// ─── Design tokens ───────────────────────────────────────────────
+const C = {
+  bg: "#0d1117",
+  surface: "#161b22",
+  surfaceAlt: "#1c2230",
+  border: "#30363d",
+  borderLight: "#21262d",
+  text: "#e6edf3",
+  textMuted: "#8b949e",
+  textDim: "#484f58",
+  green: "#3fb950",
+  greenDim: "#1a3c20",
+  greenText: "#56d364",
+  red: "#f85149",
+  redDim: "#3c1a1a",
+  redText: "#ff7b72",
+  amber: "#d29922",
+  amberDim: "#3c2a0a",
+  amberText: "#e3b341",
+  purple: "#7c6fcd",
+  purpleDim: "#1e1a3c",
+  purpleText: "#a78bfa",
+  blue: "#388bfd",
+  blueDim: "#0d2044",
+  accent: "#58a6ff",
+}
+
+const S = {
+  card: {
+    background: C.surface,
+    borderRadius: 12,
+    border: `1px solid ${C.border}`,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.textMuted,
+  },
+  mono: {
+    fontFamily: "'SF Mono', 'Fira Code', monospace",
+  }
+}
+
+// ─── Micro components ────────────────────────────────────────────
 function Sparkline({ data, width = 100, height = 32 }) {
   if (!data || data.length < 2) return null
   const min = Math.min(...data), max = Math.max(...data)
@@ -17,23 +63,60 @@ function Sparkline({ data, width = 100, height = 32 }) {
   const pts = data.map((v, i) => `${(i/(data.length-1))*width},${height - ((v-min)/range)*(height-4) - 2}`).join(" ")
   const up = data[data.length-1] >= data[0]
   return (
-    <svg width={width} height={height}>
-      <polyline points={pts} fill="none" stroke={up ? "#5a9e3a" : "#d95f5f"} strokeWidth="1.5" strokeLinejoin="round"/>
+    <svg width={width} height={height} style={{display:"block"}}>
+      <polyline points={pts} fill="none" stroke={up ? C.green : C.red} strokeWidth="1.5" strokeLinejoin="round"/>
     </svg>
   )
 }
 
-function ScoreArc({ value }) {
-  const r = 26, circ = 2 * Math.PI * r
-  const color = value >= 55 ? "#5a9e3a" : value >= 45 ? "#c8841a" : "#d95f5f"
+function ScoreRing({ value, size = 56 }) {
+  const r = (size/2) - 5
+  const circ = 2 * Math.PI * r
+  const color = value >= 60 ? C.green : value >= 45 ? C.amber : C.red
   return (
-    <svg width={64} height={64}>
-      <circle cx={32} cy={32} r={r} fill="none" stroke="#e8e4dc" strokeWidth={5}/>
-      <circle cx={32} cy={32} r={r} fill="none" stroke={color} strokeWidth={5}
+    <svg width={size} height={size}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={4}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={4}
         strokeDasharray={`${(value/100)*circ} ${circ}`} strokeLinecap="round"
-        transform="rotate(-90 32 32)"/>
-      <text x={32} y={37} textAnchor="middle" fontSize={13} fontWeight={600} fill={color}>{value}</text>
+        transform={`rotate(-90 ${size/2} ${size/2})`}/>
+      <text x={size/2} y={size/2+5} textAnchor="middle" fontSize={11} fontWeight={700}
+        fill={color} fontFamily="'SF Mono',monospace">{value}</text>
     </svg>
+  )
+}
+
+function Badge({ children, color = "default", style = {} }) {
+  const colors = {
+    green: { bg: C.greenDim, text: C.greenText, border: "#2ea043" },
+    red: { bg: C.redDim, text: C.redText, border: "#da3633" },
+    amber: { bg: C.amberDim, text: C.amberText, border: "#9e6a03" },
+    purple: { bg: C.purpleDim, text: C.purpleText, border: "#6e40c9" },
+    blue: { bg: C.blueDim, text: C.accent, border: "#1f6feb" },
+    default: { bg: C.surfaceAlt, text: C.textMuted, border: C.border },
+  }
+  const c = colors[color] || colors.default
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+      display: "inline-block", ...style
+    }}>{children}</span>
+  )
+}
+
+function SignalBar({ label, value, color, icon }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: C.textMuted, width: 130, flexShrink: 0 }}>
+        {icon && <span style={{marginRight:4}}>{icon}</span>}{label}
+      </div>
+      <div style={{ flex: 1, background: C.border, borderRadius: 3, height: 6 }}>
+        <div style={{ width: `${Math.min(100,Math.max(0,value))}%`, height: 6, borderRadius: 3, background: color, transition:"width 0.4s" }}/>
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 700, width: 28, textAlign: "right", ...S.mono, color: C.text }}>
+        {Math.round(value)}
+      </div>
+    </div>
   )
 }
 
@@ -41,13 +124,14 @@ function YearBar({ low, high, current }) {
   if (!low || !high || low >= high) return null
   const pct = Math.min(100, Math.max(0, ((current-low)/(high-low))*100))
   return (
-    <div style={{marginTop:8}}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#9a9690",marginBottom:3}}>
-        <span>52w low ${fmt(low)}</span><span>52w high ${fmt(high)}</span>
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:C.textMuted, marginBottom:4 }}>
+        <span>${fmt(low)}</span><span>52w range</span><span>${fmt(high)}</span>
       </div>
-      <div style={{background:"#e8e4dc",borderRadius:3,height:4,position:"relative"}}>
-        <div style={{width:`${pct}%`,height:4,borderRadius:3,background:"#7c6fcd"}}/>
-        <div style={{position:"absolute",left:`${pct}%`,top:-3,transform:"translateX(-50%)",width:10,height:10,borderRadius:"50%",background:"#7c6fcd",border:"2px solid #fff"}}/>
+      <div style={{ background: C.border, borderRadius: 4, height: 5, position:"relative" }}>
+        <div style={{ width:`${pct}%`, height:5, borderRadius:4, background:`linear-gradient(90deg, ${C.red}, ${C.amber}, ${C.green})` }}/>
+        <div style={{ position:"absolute", left:`${pct}%`, top:-3, transform:"translateX(-50%)",
+          width:11, height:11, borderRadius:"50%", background:C.accent, border:`2px solid ${C.bg}` }}/>
       </div>
     </div>
   )
@@ -55,105 +139,95 @@ function YearBar({ low, high, current }) {
 
 function HistoryChart({ history, width = 500 }) {
   if (!history || history.length < 2) return (
-    <div style={{fontSize:12,color:"#9a9690",textAlign:"center",padding:"1rem",
-      background:"#f0ede8",borderRadius:10}}>
-      Not enough history yet — charts build up as the pipeline runs daily.
+    <div style={{ fontSize:12, color:C.textDim, textAlign:"center", padding:"1rem",
+      background:C.surfaceAlt, borderRadius:8, border:`1px solid ${C.border}` }}>
+      History builds as pipeline runs daily
     </div>
   )
-  const height = 120
-  const padL = 36, padR = 16, padT = 10, padB = 24
-  const W = width - padL - padR
-  const H = height - padT - padB
+  const height = 110
+  const padL = 32, padR = 12, padT = 8, padB = 20
+  const W = width - padL - padR, H = height - padT - padB
   const scores = history.map(h => h.composite_score)
   const dates = history.map(h => h.date)
   const minS = Math.min(...scores), maxS = Math.max(...scores)
   const rangeS = maxS - minS || 1
-  const scorePoints = scores.map((v, i) => {
-    const x = padL + (i / (scores.length - 1)) * W
-    const y = padT + H - ((v - minS) / rangeS) * H
+  const pts = scores.map((v,i) => {
+    const x = padL + (i/(scores.length-1))*W
+    const y = padT + H - ((v-minS)/rangeS)*H
     return `${x},${y}`
   }).join(" ")
   const step = Math.ceil(dates.length / 5)
-  const labelIndices = dates.reduce((acc, d, i) => {
-    if (i % step === 0 || i === dates.length - 1) acc.push(i)
-    return acc
-  }, [])
+  const labelIdx = dates.reduce((acc,d,i) => { if(i%step===0||i===dates.length-1) acc.push(i); return acc }, [])
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`}>
       <defs>
-        <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#7c6fcd" stopOpacity="0.25"/>
-          <stop offset="100%" stopColor="#7c6fcd" stopOpacity="0"/>
+        <linearGradient id="hg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C.purple} stopOpacity="0.3"/>
+          <stop offset="100%" stopColor={C.purple} stopOpacity="0"/>
         </linearGradient>
       </defs>
-      {[0, 0.5, 1].map((pct, i) => {
-        const y = padT + H - pct * H
-        const val = Math.round(minS + pct * rangeS)
+      {[0,0.5,1].map((pct,i) => {
+        const y = padT + H - pct*H
         return (
           <g key={i}>
-            <line x1={padL} y1={y} x2={padL+W} y2={y} stroke="#e8e4dc" strokeWidth="0.5"/>
-            <text x={padL-4} y={y+4} textAnchor="end" fontSize={9} fill="#9a9690">{val}</text>
+            <line x1={padL} y1={y} x2={padL+W} y2={y} stroke={C.border} strokeWidth="0.5"/>
+            <text x={padL-4} y={y+4} textAnchor="end" fontSize={8} fill={C.textDim}>
+              {Math.round(minS+pct*rangeS)}
+            </text>
           </g>
         )
       })}
-      <polygon
-        points={`${padL},${padT+H} ${scorePoints} ${padL+W},${padT+H}`}
-        fill="url(#scoreGrad)"/>
-      <polyline points={scorePoints} fill="none" stroke="#7c6fcd"
-        strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
-      {scores.map((v, i) => {
-        const x = padL + (i / (scores.length - 1)) * W
-        const y = padT + H - ((v - minS) / rangeS) * H
-        return <circle key={i} cx={x} cy={y} r="3" fill="#7c6fcd"/>
+      <polygon points={`${padL},${padT+H} ${pts} ${padL+W},${padT+H}`} fill="url(#hg)"/>
+      <polyline points={pts} fill="none" stroke={C.purple} strokeWidth="2" strokeLinejoin="round"/>
+      {scores.map((v,i) => {
+        const x = padL+(i/(scores.length-1))*W
+        const y = padT+H-((v-minS)/rangeS)*H
+        return <circle key={i} cx={x} cy={y} r="3" fill={C.purple} stroke={C.bg} strokeWidth="1.5"/>
       })}
-      {labelIndices.map((idx) => {
-        const x = padL + (idx / (dates.length - 1)) * W
+      {labelIdx.map(idx => {
+        const x = padL+(idx/(dates.length-1))*W
         const d = dates[idx]
-        const label = `${d.slice(4,6)}/${d.slice(6,8)}`
-        return <text key={idx} x={x} y={height-4} textAnchor="middle" fontSize={9} fill="#9a9690">{label}</text>
+        return <text key={idx} x={x} y={height-4} textAnchor="middle" fontSize={8} fill={C.textDim}>
+          {`${d.slice(4,6)}/${d.slice(6,8)}`}
+        </text>
       })}
     </svg>
   )
 }
 
-function SentimentHistoryChart({ history, width = 500 }) {
+function SentimentChart({ history, width = 500 }) {
   if (!history || history.length < 2) return null
-  const height = 80
-  const padL = 36, padR = 16, padT = 8, padB = 8
-  const W = width - padL - padR
-  const H = height - padT - padB
-  const sentiments = history.map(h => h.avg_sentiment || 0)
+  const height = 70
+  const padL = 32, padR = 12, padT = 6, padB = 6
+  const W = width - padL - padR, H = height - padT - padB
+  const vals = history.map(h => h.avg_sentiment || 0)
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`}>
-      <line x1={padL} y1={padT+H/2} x2={padL+W} y2={padT+H/2}
-        stroke="#e8e4dc" strokeWidth="1" strokeDasharray="3 3"/>
-      {sentiments.map((v, i) => {
-        const x = padL + (i / sentiments.length) * W
-        const barW = Math.max(2, W / sentiments.length - 2)
-        const zeroY = padT + H/2
-        const barH = Math.abs((v / 2) * H)
-        const y = v >= 0 ? zeroY - barH : zeroY
-        return (
-          <rect key={i} x={x} y={y} width={barW} height={Math.max(1, barH)}
-            fill={v > 0.1 ? "#5a9e3a" : v < -0.1 ? "#d95f5f" : "#c8841a"}
-            opacity="0.7" rx="1"/>
-        )
+      <line x1={padL} y1={padT+H/2} x2={padL+W} y2={padT+H/2} stroke={C.border} strokeWidth="1" strokeDasharray="3 3"/>
+      {vals.map((v,i) => {
+        const x = padL + (i/vals.length)*W
+        const bw = Math.max(2, W/vals.length - 1)
+        const zY = padT+H/2
+        const bH = Math.abs((v/2)*H)
+        const y = v >= 0 ? zY - bH : zY
+        return <rect key={i} x={x} y={y} width={bw} height={Math.max(1,bH)}
+          fill={v>0.1?C.green:v<-0.1?C.red:C.amber} opacity="0.8" rx="1"/>
       })}
-      <text x={padL-4} y={padT+8} textAnchor="end" fontSize={8} fill="#9a9690">+1</text>
-      <text x={padL-4} y={padT+H/2+4} textAnchor="end" fontSize={8} fill="#9a9690">0</text>
-      <text x={padL-4} y={padT+H} textAnchor="end" fontSize={8} fill="#9a9690">-1</text>
+      <text x={padL-4} y={padT+6} textAnchor="end" fontSize={7} fill={C.textDim}>+1</text>
+      <text x={padL-4} y={padT+H/2+4} textAnchor="end" fontSize={7} fill={C.textDim}>0</text>
+      <text x={padL-4} y={padT+H-1} textAnchor="end" fontSize={7} fill={C.textDim}>-1</text>
     </svg>
   )
 }
 
+// ─── Modal ───────────────────────────────────────────────────────
 function Modal({ ticker, data, onClose }) {
   const [detail, setDetail] = useState(null)
   const [history, setHistory] = useState(null)
   const t = [...(data.top5_stocks||[]), ...(data.top5_etfs||[])].find(x => x.ticker === ticker)
 
   useEffect(() => {
-    setDetail(null)
-    setHistory(null)
+    setDetail(null); setHistory(null)
     axios.get(`${API}/api/ticker/${ticker}/detail`).then(r => setDetail(r.data))
     axios.get(`${API}/api/history/${ticker}`).then(r => setHistory(r.data.history))
   }, [ticker])
@@ -162,80 +236,82 @@ function Modal({ ticker, data, onClose }) {
   const p = detail?.price_data || {}
   const priceHistory = p.price_history || t?.price_history || []
   const headlines = detail?.headlines || []
+  const up = (t?.week_change_pct || 0) >= 0
+
+  const sentColor = (s) => s > 0.1 ? C.green : s < -0.1 ? C.red : C.amber
+  const sentLabel = (s) => s > 0.1 ? "bullish" : s < -0.1 ? "bearish" : "neutral"
+  const sentBadge = (s) => s > 0.1 ? "green" : s < -0.1 ? "red" : "amber"
 
   return (
     <div onClick={onClose} style={{
-      position:"fixed",inset:0,background:"rgba(20,18,15,0.6)",
-      display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:"1rem",backdropFilter:"blur(2px)"
+      position:"fixed", inset:0, background:"rgba(0,0,0,0.75)",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      zIndex:200, padding:"1rem", backdropFilter:"blur(4px)"
     }}>
       <div onClick={e=>e.stopPropagation()} style={{
-        background:"#faf8f4",borderRadius:20,padding:"1.75rem",
-        width:"100%",maxWidth:580,maxHeight:"88vh",
-        overflowY:"auto",border:"1px solid #e8e4dc",
-        boxShadow:"0 24px 64px rgba(0,0,0,0.15)"
+        background: C.surface, borderRadius:16, padding:"1.5rem",
+        width:"100%", maxWidth:600, maxHeight:"90vh", overflowY:"auto",
+        border:`1px solid ${C.border}`,
+        boxShadow:"0 32px 80px rgba(0,0,0,0.6)"
       }}>
         {/* Header */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20}}>
           <div>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-              <span style={{fontSize:26,fontWeight:600,letterSpacing:"-0.5px"}}>{ticker}</span>
-              <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,fontWeight:500,
-                background:t?.is_etf?"#ede9fe":"#dcfce7",color:t?.is_etf?"#5b21b6":"#166534"}}>
-                {t?.is_etf?"ETF":"Stock"}
-              </span>
+            <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:4}}>
+              <span style={{fontSize:24, fontWeight:700, ...S.mono, color:C.text}}>{ticker}</span>
+              <Badge color={t?.is_etf ? "purple" : "green"}>{t?.is_etf ? "ETF" : "Stock"}</Badge>
               {(t?.volume_spike||p.volume_spike) > 1.5 && (
-                <span style={{fontSize:11,padding:"3px 9px",borderRadius:20,background:"#fef3c7",color:"#92400e",fontWeight:500}}>
-                  ⚡ {(t?.volume_spike||p.volume_spike)}x vol
-                </span>
+                <Badge color="amber">⚡ {(t?.volume_spike||p.volume_spike)}x vol</Badge>
+              )}
+              {t?.congress_signal && t.congress_signal !== "neutral" && t.congress_signal !== "no_data" && (
+                <Badge color={t.congress_signal.includes("buy") ? "green" : "red"}>
+                  🏛 {t.congress_signal.replace("_"," ")}
+                </Badge>
               )}
             </div>
-            <div style={{fontSize:13,color:"#9a9690"}}>{t?.sector}</div>
+            <div style={{fontSize:12, color:C.textMuted}}>{t?.sector}</div>
           </div>
-          <button onClick={onClose} style={{background:"#f0ede8",border:"none",borderRadius:8,
-            width:32,height:32,cursor:"pointer",fontSize:16,color:"#9a9690",
-            display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          <button onClick={onClose} style={{
+            background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:8,
+            width:32, height:32, cursor:"pointer", fontSize:14, color:C.textMuted,
+            display:"flex", alignItems:"center", justifyContent:"center"
+          }}>✕</button>
         </div>
 
         {/* Price row */}
-        <div style={{background:"#f0ede8",borderRadius:14,padding:"16px 18px",marginBottom:16}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:20}}>
+        <div style={{background:C.surfaceAlt, borderRadius:12, padding:"16px", marginBottom:14, border:`1px solid ${C.border}`}}>
+          <div style={{display:"grid", gridTemplateColumns:"1fr auto", gap:16}}>
             <div>
-              <div style={{fontSize:30,fontWeight:600,letterSpacing:"-1px",marginBottom:2}}>
+              <div style={{fontSize:28, fontWeight:700, letterSpacing:"-1px", ...S.mono, color:C.text, marginBottom:2}}>
                 ${fmt(t?.latest_close || p.latest_close)}
               </div>
-              <div style={{fontSize:15,fontWeight:500,marginBottom:14,
-                color:t?.week_change_pct>=0?"#5a9e3a":"#d95f5f"}}>
-                {t?.week_change_pct>=0?"▲":"▼"} {Math.abs(t?.week_change_pct||0).toFixed(2)}% this week
+              <div style={{fontSize:14, fontWeight:600, marginBottom:12,
+                color: up ? C.green : C.red}}>
+                {up ? "▲" : "▼"} {Math.abs(t?.week_change_pct||0).toFixed(2)}% this week
               </div>
               {priceHistory.length > 1
-                ? <><Sparkline data={priceHistory} width={220} height={44}/>
-                    <div style={{fontSize:10,color:"#b0ada8",marginTop:3}}>30-day price history</div></>
-                : <div style={{fontSize:12,color:"#b0ada8",height:44,display:"flex",alignItems:"center"}}>
-                    Loading chart...
-                  </div>
+                ? <><Sparkline data={priceHistory} width={200} height={40}/>
+                    <div style={{fontSize:10, color:C.textDim, marginTop:2}}>30-day price</div></>
+                : <div style={{fontSize:11, color:C.textDim, height:40, display:"flex", alignItems:"center"}}>Loading chart...</div>
               }
             </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-              <ScoreArc value={t?.composite_score||0}/>
-              <div style={{fontSize:10,color:"#9a9690",marginTop:2}}>score</div>
+            <div style={{display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4}}>
+              <ScoreRing value={t?.composite_score||0} size={60}/>
+              <div style={{fontSize:10, color:C.textMuted}}>score</div>
             </div>
           </div>
-        </div>
-
-        {/* 52w range */}
-        {(p.year_high||t?.year_high) > 0 && (
-          <div style={{marginBottom:16}}>
+          {(p.year_high||t?.year_high) > 0 && (
             <YearBar low={p.year_low||t?.year_low} high={p.year_high||t?.year_high}
               current={t?.latest_close||p.latest_close}/>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Stats */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
+        {/* Stats grid */}
+        <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:14}}>
           {[
             {label:"Market cap", value:fmtCap(p.market_cap||t?.market_cap)},
             {label:"P/E ratio", value:(p.pe_ratio||t?.pe_ratio) ? fmt(p.pe_ratio||t?.pe_ratio,1) : "—"},
-            {label:"Revenue growth", value: t?.revenue_growth != null ? `${t.revenue_growth > 0 ? "+" : ""}${t.revenue_growth}%` : "—"},
+            {label:"Revenue growth", value: t?.revenue_growth != null ? `${t.revenue_growth>0?"+":""}${t.revenue_growth}%` : "—"},
             {label:"Profit margin", value: t?.profit_margin != null ? `${t.profit_margin}%` : "—"},
             {label:"Debt/Equity", value: t?.debt_equity != null ? fmt(t.debt_equity,2) : "—"},
             {label:"Earnings beats", value: t?.earnings_surprise || "—"},
@@ -243,168 +319,232 @@ function Modal({ ticker, data, onClose }) {
             {label:"Institutions", value: t?.major_institutions != null ? `${t.major_institutions} major` : "—"},
             {label:"Insider filings", value: t?.insider_count != null ? `${t.insider_count} Form 4s` : "—"},
           ].map(m => (
-            <div key={m.label} style={{background:"#f0ede8",borderRadius:10,padding:"10px 12px"}}>
-              <div style={{fontSize:10,color:"#9a9690",marginBottom:3}}>{m.label}</div>
-              <div style={{fontSize:14,fontWeight:600}}>{m.value}</div>
+            <div key={m.label} style={{background:C.bg, borderRadius:8, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+              <div style={{...S.label, marginBottom:3}}>{m.label}</div>
+              <div style={{fontSize:13, fontWeight:600, color:C.text}}>{m.value}</div>
             </div>
           ))}
         </div>
 
-        {/* Confluence indicator */}
+        {/* NEW: Analyst + Short Interest + Congress row */}
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14}}>
+          {/* Analyst */}
+          <div style={{background:C.bg, borderRadius:8, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+            <div style={{...S.label, marginBottom:6}}>📊 Analyst target</div>
+            {t?.analyst_target ? (
+              <>
+                <div style={{fontSize:14, fontWeight:700, color:C.text, ...S.mono}}>${fmt(t.analyst_target)}</div>
+                <div style={{fontSize:11, fontWeight:600, marginTop:2,
+                  color: t.analyst_upside > 0 ? C.green : C.red}}>
+                  {t.analyst_upside > 0 ? "+" : ""}{fmt(t.analyst_upside,1)}% upside
+                </div>
+                {t.analyst_rating && (
+                  <Badge color={t.analyst_rating==="buy"?"green":t.analyst_rating==="sell"?"red":"default"}
+                    style={{marginTop:4}}>
+                    {t.analyst_rating}
+                  </Badge>
+                )}
+                {(t.recent_upgrades > 0 || t.recent_downgrades > 0) && (
+                  <div style={{fontSize:10, color:C.textMuted, marginTop:4}}>
+                    {t.recent_upgrades > 0 && <span style={{color:C.green}}>↑{t.recent_upgrades} upgrades </span>}
+                    {t.recent_downgrades > 0 && <span style={{color:C.red}}>↓{t.recent_downgrades} downgrades</span>}
+                  </div>
+                )}
+              </>
+            ) : <div style={{fontSize:12, color:C.textDim}}>No data</div>}
+          </div>
+
+          {/* Short Interest */}
+          <div style={{background:C.bg, borderRadius:8, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+            <div style={{...S.label, marginBottom:6}}>🩳 Short interest</div>
+            {t?.short_float_pct != null ? (
+              <>
+                <div style={{fontSize:14, fontWeight:700, ...S.mono,
+                  color: t.short_float_pct > 20 ? C.red : t.short_float_pct > 10 ? C.amber : C.text}}>
+                  {fmt(t.short_float_pct,1)}% float
+                </div>
+                <div style={{fontSize:11, color:C.textMuted, marginTop:2}}>
+                  {t.short_ratio ? `${fmt(t.short_ratio,1)} days to cover` : ""}
+                </div>
+                <Badge color={t.short_float_pct > 20 ? "red" : t.short_float_pct > 10 ? "amber" : "default"}
+                  style={{marginTop:4}}>
+                  {t.short_signal?.replace("_"," ") || "low"}
+                </Badge>
+              </>
+            ) : <div style={{fontSize:12, color:C.textDim}}>No data</div>}
+          </div>
+
+          {/* Congress */}
+          <div style={{background:C.bg, borderRadius:8, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+            <div style={{...S.label, marginBottom:6}}>🏛 Congress trades</div>
+            {t?.congress_signal && t.congress_signal !== "no_data" ? (
+              <>
+                <div style={{display:"flex", gap:10, marginBottom:4}}>
+                  <span style={{fontSize:13, fontWeight:700, color:C.green}}>
+                    {t.congress_buys || 0}B
+                  </span>
+                  <span style={{fontSize:13, fontWeight:700, color:C.red}}>
+                    {t.congress_sells || 0}S
+                  </span>
+                </div>
+                <Badge color={t.congress_signal.includes("buy") ? "green" : t.congress_signal.includes("sell") ? "red" : "default"}>
+                  {t.congress_signal.replace(/_/g," ")}
+                </Badge>
+                {t.congress_buyers?.length > 0 && (
+                  <div style={{fontSize:10, color:C.textMuted, marginTop:4, lineHeight:1.4}}>
+                    {t.congress_buyers.slice(0,2).join(", ")}
+                    {t.congress_buyers.length > 2 ? ` +${t.congress_buyers.length-2} more` : ""}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{fontSize:12, color:C.textDim}}>No activity</div>
+            )}
+          </div>
+        </div>
+
+        {/* Signal confluence */}
         {t?.bullish_signals != null && (
           <div style={{
-            marginBottom:16,borderRadius:12,padding:"12px 16px",
-            background: t.bullish_signals >= 5 ? "#f0fdf4" : t.bullish_signals >= 4 ? "#fffbeb" : "#f5f3ef",
-            border: `1px solid ${t.bullish_signals >= 5 ? "#86efac" : t.bullish_signals >= 4 ? "#fde68a" : "#e8e4dc"}`
+            marginBottom:14, borderRadius:10, padding:"12px 14px",
+            background: t.bullish_signals >= 6 ? `${C.greenDim}` : t.bullish_signals >= 4 ? C.amberDim : C.surfaceAlt,
+            border: `1px solid ${t.bullish_signals >= 6 ? "#2ea043" : t.bullish_signals >= 4 ? "#9e6a03" : C.border}`
           }}>
-            <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Signal confluence</div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{display:"flex",gap:4}}>
-                {[1,2,3,4,5,6,7].map(i => (
-                  <div key={i} style={{width:20,height:20,borderRadius:4,
-                    background: i <= t.bullish_signals
-                      ? t.bullish_signals >= 5 ? "#5a9e3a"
-                      : t.bullish_signals >= 4 ? "#c8841a" : "#9a9690"
-                      : "#e8e4dc",
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    fontSize:10,color:"#fff",fontWeight:600
-                  }}>{i <= t.bullish_signals ? "✓" : ""}</div>
+            <div style={{...S.label, marginBottom:8}}>Signal confluence</div>
+            <div style={{display:"flex", alignItems:"center", gap:10}}>
+              <div style={{display:"flex", gap:3}}>
+                {Array.from({length:12}).map((_,i) => (
+                  <div key={i} style={{
+                    width:14, height:14, borderRadius:3,
+                    background: i < t.bullish_signals
+                      ? t.bullish_signals >= 6 ? C.green : t.bullish_signals >= 4 ? C.amber : C.textMuted
+                      : C.border,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:8, color:C.bg, fontWeight:700
+                  }}>{i < t.bullish_signals ? "✓" : ""}</div>
                 ))}
               </div>
-              <div style={{fontSize:13,color:"#3d3a36",fontWeight:500}}>
-                {t.bullish_signals}/7 signals aligned
-                {t.bullish_signals >= 5 && " — highest conviction"}
-                {t.bullish_signals === 4 && " — strong setup"}
-                {t.bullish_signals <= 3 && " — mixed signals"}
+              <div style={{fontSize:12, color:C.text, fontWeight:500}}>
+                {t.bullish_signals}/12
+                {t.bullish_signals >= 7 && " — highest conviction"}
+                {t.bullish_signals >= 5 && t.bullish_signals < 7 && " — strong setup"}
+                {t.bullish_signals < 5 && " — mixed signals"}
               </div>
             </div>
           </div>
         )}
 
-        {/* Signal bars */}
-        <div style={{background:"#f0ede8",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:12,
-            textTransform:"uppercase",letterSpacing:"0.07em"}}>Signal breakdown</div>
-          {[
-            {label:"Price + RSI + breakout", value:t?.price_score||0, color:"#4f8ef7"},
-            {label:"FinBERT sentiment", value:t?.sentiment_score||0,
-              color:(t?.avg_sentiment||0)>0.1?"#5a9e3a":(t?.avg_sentiment||0)<-0.1?"#d95f5f":"#c8841a"},
-            {label:"Social buzz", value:t?.buzz_score||0, color:"#7c6fcd"},
-            {label:"StockTwits", value:t?.st_score||0, color:"#0ea5e9"},
-            {label:"Fundamentals", value:t?.fundamental_score||50, color:"#059669"},
-            {label:"Insider activity", value: t?.insider_count > 0 ? 75 : 50, color:"#dc2626"},
-            {label:"Institutions", value: Math.min(100, (t?.major_institutions||0) * 20 + 40), color:"#7c3aed"},
-          ].map(b => (
-            <div key={b.label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-              <div style={{fontSize:12,color:"#6b6862",width:120,flexShrink:0}}>{b.label}</div>
-              <div style={{flex:1,background:"#e8e4dc",borderRadius:4,height:7}}>
-                <div style={{width:`${b.value}%`,height:7,borderRadius:4,background:b.color}}/>
-              </div>
-              <div style={{fontSize:12,fontWeight:600,width:32,textAlign:"right"}}>{fmt(b.value,0)}</div>
-            </div>
-          ))}
+        {/* Signal breakdown - 12 signals */}
+        <div style={{background:C.surfaceAlt, borderRadius:12, padding:"14px 16px", marginBottom:14, border:`1px solid ${C.border}`}}>
+          <div style={{...S.label, marginBottom:12}}>Signal breakdown</div>
+          <SignalBar label="Price + RSI + breakout" value={t?.price_score||0} color={C.blue} icon="📈"/>
+          <SignalBar label="FinBERT sentiment" value={t?.sentiment_score||0}
+            color={sentColor(t?.avg_sentiment||0)} icon="🧠"/>
+          <SignalBar label="Social buzz" value={t?.buzz_score||0} color={C.purple} icon="💬"/>
+          <SignalBar label="StockTwits" value={t?.st_score||0} color="#0ea5e9" icon="📡"/>
+          <SignalBar label="Fundamentals" value={t?.fundamental_score||50} color={C.green} icon="💰"/>
+          <SignalBar label="Analyst targets" value={t?.analyst_score||50} color={C.accent} icon="📊"/>
+          <SignalBar label="Short interest" value={t?.short_score||50} color={C.amber} icon="🩳"/>
+          <SignalBar label="Congress trades" value={t?.congress_score||50} color="#e879f9" icon="🏛"/>
+          <SignalBar label="Insider activity" value={t?.insider_count > 0 ? 75 : 50} color={C.red} icon="👤"/>
+          <SignalBar label="Institutions" value={Math.min(100,(t?.major_institutions||0)*20+40)} color="#7c3aed" icon="🏢"/>
+          <SignalBar label="Google Trends" value={t?.trends_score||50} color="#f97316" icon="🔍"/>
+          <SignalBar label="Options flow" value={t?.options_score||50} color="#06b6d4" icon="⚡"/>
         </div>
 
-        {/* Historical charts */}
-        <div style={{marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
-            textTransform:"uppercase",letterSpacing:"0.07em"}}>Score history</div>
-          <HistoryChart history={history} width={500}/>
+        {/* History charts */}
+        <div style={{marginBottom:14}}>
+          <div style={{...S.label, marginBottom:8}}>Score history</div>
+          <HistoryChart history={history} width={520}/>
           {history && history.length > 1 && (
             <>
-              <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:4,marginTop:12,
-                textTransform:"uppercase",letterSpacing:"0.07em"}}>Sentiment trend</div>
-              <SentimentHistoryChart history={history} width={500}/>
+              <div style={{...S.label, marginBottom:4, marginTop:10}}>Sentiment trend</div>
+              <SentimentChart history={history} width={520}/>
             </>
           )}
         </div>
 
         {/* Signal interpretation */}
         {r.signal_call && (
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:10,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Signal interpretation</div>
-            <div style={{borderRadius:12,padding:"12px 16px",marginBottom:10,
-              background:r.signal_color==="green"?"#f0fdf4":r.signal_color==="red"?"#fef2f2":"#fffbeb",
-              border:`1px solid ${r.signal_color==="green"?"#86efac":r.signal_color==="red"?"#fca5a5":"#fde68a"}`}}>
-              <div style={{fontSize:12,fontWeight:700,letterSpacing:"0.05em",marginBottom:4,
-                color:r.signal_color==="green"?"#166534":r.signal_color==="red"?"#991b1b":"#92400e"}}>
+          <div style={{marginBottom:14}}>
+            <div style={{...S.label, marginBottom:8}}>Signal interpretation</div>
+            <div style={{
+              borderRadius:10, padding:"12px 14px", marginBottom:8,
+              background: r.signal_color==="green" ? C.greenDim : r.signal_color==="red" ? C.redDim : C.amberDim,
+              border:`1px solid ${r.signal_color==="green"?"#2ea043":r.signal_color==="red"?"#da3633":"#9e6a03"}`
+            }}>
+              <div style={{fontSize:11, fontWeight:700, letterSpacing:"0.05em", marginBottom:4,
+                color:r.signal_color==="green"?C.greenText:r.signal_color==="red"?C.redText:C.amberText}}>
                 {r.signal_call}
               </div>
-              <div style={{fontSize:13,lineHeight:1.5,
-                color:r.signal_color==="green"?"#166534":r.signal_color==="red"?"#991b1b":"#78350f"}}>
+              <div style={{fontSize:12, lineHeight:1.5,
+                color:r.signal_color==="green"?C.greenText:r.signal_color==="red"?C.redText:C.amberText}}>
                 {r.signal_desc}
               </div>
             </div>
-            <div style={{background:"#f5f3ef",borderRadius:10,padding:"10px 14px",marginBottom:8}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#7c6fcd",marginBottom:4}}>Reddit signal</div>
-              <div style={{fontSize:12,color:"#3d3a36",lineHeight:1.5}}>{r.reddit_interp}</div>
+            <div style={{background:C.bg, borderRadius:8, padding:"10px 12px", marginBottom:6, border:`1px solid ${C.border}`}}>
+              <div style={{fontSize:10, fontWeight:600, color:C.purple, marginBottom:4}}>Reddit signal</div>
+              <div style={{fontSize:12, color:C.textMuted, lineHeight:1.5}}>{r.reddit_interp}</div>
             </div>
-            <div style={{background:"#f5f3ef",borderRadius:10,padding:"10px 14px"}}>
-              <div style={{fontSize:11,fontWeight:600,marginBottom:4,
-                color:(t?.avg_sentiment||0)>0.1?"#166534":(t?.avg_sentiment||0)<-0.1?"#991b1b":"#92400e"}}>
-                Sentiment signal
-              </div>
-              <div style={{fontSize:12,color:"#3d3a36",lineHeight:1.5}}>{r.sentiment_interp}</div>
+            <div style={{background:C.bg, borderRadius:8, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+              <div style={{fontSize:10, fontWeight:600, marginBottom:4,
+                color:sentColor(t?.avg_sentiment||0)}}>Sentiment signal</div>
+              <div style={{fontSize:12, color:C.textMuted, lineHeight:1.5}}>{r.sentiment_interp}</div>
             </div>
           </div>
         )}
 
         {/* Why picked */}
-        <div style={{marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
-            textTransform:"uppercase",letterSpacing:"0.07em"}}>Why this pick</div>
+        <div style={{marginBottom:14}}>
+          <div style={{...S.label, marginBottom:8}}>Why this pick</div>
           {r.thesis && (
-            <div style={{fontSize:13,color:"#3d3a36",fontStyle:"italic",marginBottom:10,
-              borderLeft:"3px solid #7c6fcd",paddingLeft:10,lineHeight:1.5}}>{r.thesis}</div>
+            <div style={{fontSize:12, color:C.textMuted, fontStyle:"italic", marginBottom:8,
+              borderLeft:`3px solid ${C.purple}`, paddingLeft:10, lineHeight:1.5}}>{r.thesis}</div>
           )}
           {(r.reasons||[]).map((reason,i) => (
-            <div key={i} style={{display:"flex",gap:8,fontSize:13,color:"#3d3a36",marginBottom:5}}>
-              <span style={{color:"#5a9e3a",flexShrink:0}}>✓</span>{reason}
+            <div key={i} style={{display:"flex", gap:8, fontSize:12, color:C.textMuted, marginBottom:4}}>
+              <span style={{color:C.green, flexShrink:0}}>✓</span>{reason}
             </div>
           ))}
         </div>
 
         {/* Watch out */}
         {(r.watches||[]).filter(w => w !== "monitor for broader market shifts").length > 0 && (
-          <div style={{background:"#fff8ed",border:"1px solid #f5d98b",borderRadius:12,
-            padding:"12px 14px",marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#92400e",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Watch out for</div>
+          <div style={{background:C.amberDim, border:`1px solid #9e6a03`, borderRadius:10,
+            padding:"12px 14px", marginBottom:14}}>
+            <div style={{...S.label, color:C.amberText, marginBottom:6}}>Watch out for</div>
             {r.watches.map((w,i) => (
-              <div key={i} style={{display:"flex",gap:8,fontSize:13,color:"#78350f",marginBottom:4}}>
+              <div key={i} style={{display:"flex", gap:8, fontSize:12, color:C.amberText, marginBottom:4}}>
                 <span style={{flexShrink:0}}>⚠</span>{w}
               </div>
             ))}
           </div>
         )}
 
-        {/* Dependencies */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+        {/* Related tickers */}
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14}}>
           {r.related_etfs?.length > 0 && (
-            <div style={{background:"#f0ede8",borderRadius:12,padding:"12px 14px"}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
-                textTransform:"uppercase",letterSpacing:"0.07em"}}>Related ETFs</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <div style={{background:C.bg, borderRadius:10, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+              <div style={{...S.label, marginBottom:6}}>Related ETFs</div>
+              <div style={{display:"flex", gap:5, flexWrap:"wrap"}}>
                 {r.related_etfs.map(e => (
                   <button key={e} onClick={()=>onClose(e)} style={{
-                    fontSize:12,fontFamily:"monospace",fontWeight:600,
-                    padding:"3px 10px",borderRadius:8,border:"1px solid #d4d0c8",
-                    background:"#fff",color:"#5b21b6",cursor:"pointer"}}>{e}</button>
+                    fontSize:11, ...S.mono, fontWeight:600, padding:"2px 8px", borderRadius:6,
+                    border:`1px solid ${C.border}`, background:C.surfaceAlt, color:C.purpleText, cursor:"pointer"
+                  }}>{e}</button>
                 ))}
               </div>
             </div>
           )}
           {r.watch_also?.length > 0 && (
-            <div style={{background:"#f0ede8",borderRadius:12,padding:"12px 14px"}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
-                textTransform:"uppercase",letterSpacing:"0.07em"}}>Watch also</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <div style={{background:C.bg, borderRadius:10, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+              <div style={{...S.label, marginBottom:6}}>Watch also</div>
+              <div style={{display:"flex", gap:5, flexWrap:"wrap"}}>
                 {r.watch_also.map(e => (
-                  <span key={e} style={{fontSize:12,fontFamily:"monospace",fontWeight:600,
-                    padding:"3px 10px",borderRadius:8,border:"1px solid #d4d0c8",
-                    background:"#fff",color:"#3d3a36"}}>{e}</span>
+                  <span key={e} style={{fontSize:11, ...S.mono, fontWeight:600, padding:"2px 8px",
+                    borderRadius:6, border:`1px solid ${C.border}`, background:C.surfaceAlt, color:C.textMuted}}>
+                    {e}
+                  </span>
                 ))}
               </div>
             </div>
@@ -413,557 +553,119 @@ function Modal({ ticker, data, onClose }) {
 
         {/* Earnings */}
         {(p.earnings_date||t?.earnings_date) && (
-          <div style={{background:"#fff8ed",border:"1px solid #f5d98b",borderRadius:10,
-            padding:"10px 14px",marginBottom:16,fontSize:13,color:"#78350f",fontWeight:500}}>
-            📅 Earnings date: {p.earnings_date||t?.earnings_date}
+          <div style={{background:C.amberDim, border:`1px solid #9e6a03`,
+            borderRadius:8, padding:"8px 12px", marginBottom:14, fontSize:12, color:C.amberText}}>
+            📅 Earnings: {p.earnings_date||t?.earnings_date}
           </div>
         )}
 
         {/* News */}
-        {!detail && (
-          <div style={{fontSize:12,color:"#9a9690",textAlign:"center",padding:"1rem"}}>
-            Loading news...
-          </div>
-        )}
+        {!detail && <div style={{fontSize:12, color:C.textDim, textAlign:"center", padding:"1rem"}}>Loading news...</div>}
         {detail && headlines.length > 0 && (
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Recent news</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{...S.label, marginBottom:8}}>Recent news</div>
+            <div style={{display:"flex", flexDirection:"column", gap:6}}>
               {headlines.map((h,i) => (
                 <a key={i} href={h.url} target="_blank" rel="noreferrer" style={{
-                  display:"block",padding:"10px 12px",background:"#f0ede8",
-                  borderRadius:10,textDecoration:"none",color:"#3d3a36",
-                  borderLeft:"3px solid #d4d0c8"}}>
-                  <div style={{fontSize:13,lineHeight:1.4,marginBottom:3}}>{h.title}</div>
-                  <div style={{fontSize:10,color:"#9a9690"}}>{h.source}</div>
+                  display:"block", padding:"10px 12px", background:C.bg,
+                  borderRadius:8, textDecoration:"none", color:C.text,
+                  borderLeft:`3px solid ${C.border}`, border:`1px solid ${C.border}`
+                }}>
+                  <div style={{fontSize:12, lineHeight:1.4, marginBottom:3}}>{h.title}</div>
+                  <div style={{fontSize:10, color:C.textDim}}>{h.source}</div>
                 </a>
               ))}
             </div>
           </div>
         )}
-        {detail && headlines.length === 0 && (
-          <div style={{fontSize:12,color:"#b0ada8",textAlign:"center",padding:"0.5rem"}}>
-            No news headlines found for {ticker} this week
-          </div>
-        )}
       </div>
     </div>
   )
 }
 
-function WatchlistManager({ onTickerClick }) {
-  const [watchlist, setWatchlist] = useState([])
-  const [removing, setRemoving] = useState(null)
-
-  useEffect(() => {
-    axios.get(`${API}/api/watchlist`).then(r => setWatchlist(r.data.tickers || []))
-  }, [])
-
-  const handleRemove = async (ticker) => {
-    setRemoving(ticker)
-    try {
-      await axios.delete(`${API}/api/watchlist/${ticker}`)
-      setWatchlist(prev => prev.filter(t => t !== ticker))
-    } catch {
-      alert("Failed to remove ticker")
-    }
-    setRemoving(null)
-  }
-
-  if (watchlist.length === 0) return null
-
-  return (
-    <div style={{background:"#faf8f4",borderRadius:14,padding:"14px 16px",
-      border:"1px solid #e8e4dc",marginBottom:16}}>
-      <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:10,
-        textTransform:"uppercase",letterSpacing:"0.08em"}}>
-        My watchlist — {watchlist.length} ticker{watchlist.length !== 1 ? "s" : ""}
-      </div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {watchlist.map(ticker => (
-          <div key={ticker} style={{display:"flex",alignItems:"center",gap:4,
-            background:"#f0ede8",borderRadius:8,padding:"4px 10px",
-            border:"1px solid #e8e4dc"}}>
-            <button onClick={() => onTickerClick(ticker)} style={{
-              fontFamily:"monospace",fontWeight:600,fontSize:12,
-              background:"none",border:"none",cursor:"pointer",color:"#3d3a36",padding:0
-            }}>{ticker}</button>
-            <button onClick={() => handleRemove(ticker)} style={{
-              background:"none",border:"none",cursor:"pointer",
-              color: removing === ticker ? "#9a9690" : "#d95f5f",
-              fontSize:12,padding:"0 2px",lineHeight:1
-            }}>
-              {removing === ticker ? "..." : "✕"}
-            </button>
-          </div>
-        ))}
-      </div>
-      <div style={{fontSize:10,color:"#9a9690",marginTop:8}}>
-        Tracked tickers will appear in history after the next 7am pipeline run
-      </div>
-    </div>
-  )
-}
-
-function WatchlistAdd({ ticker, onAdded }) {
-  const [status, setStatus] = useState("idle") // idle, loading, success, error
-  const [message, setMessage] = useState("")
-
-  const handleAdd = async () => {
-    setStatus("loading")
-    try {
-      const r = await axios.post(`${API}/api/watchlist/${ticker}`)
-      if (r.data.success) {
-        setStatus("success")
-        setMessage(r.data.message)
-        setTimeout(() => onAdded(), 2000)
-      } else {
-        setStatus("error")
-        setMessage(r.data.error || "Could not add ticker")
-      }
-    } catch {
-      setStatus("error")
-      setMessage("Failed to connect to API")
-    }
-  }
-
-  return (
-    <div style={{background:"#faf8f4",borderRadius:16,padding:"2rem",
-      border:"1px solid #e8e4dc",textAlign:"center",marginBottom:16}}>
-      <div style={{fontSize:22,fontWeight:700,fontFamily:"monospace",marginBottom:8}}>
-        {ticker}
-      </div>
-      <div style={{fontSize:13,color:"#9a9690",marginBottom:16}}>
-        Not tracked yet — add it to your watchlist and it will appear in history after the next pipeline run
-      </div>
-
-      {status === "idle" && (
-        <button onClick={handleAdd} style={{
-          fontSize:13,fontWeight:600,padding:"10px 24px",borderRadius:10,
-          cursor:"pointer",border:"none",background:"#7c6fcd",color:"#fff"
-        }}>
-          + Add {ticker} to watchlist
-        </button>
-      )}
-
-      {status === "loading" && (
-        <div style={{fontSize:13,color:"#9a9690"}}>Validating ticker...</div>
-      )}
-
-      {status === "success" && (
-        <div style={{fontSize:13,color:"#5a9e3a",fontWeight:500}}>
-          ✓ {message}
-        </div>
-      )}
-
-      {status === "error" && (
-        <div>
-          <div style={{fontSize:13,color:"#d95f5f",marginBottom:8}}>{message}</div>
-          <button onClick={() => setStatus("idle")} style={{
-            fontSize:12,padding:"6px 16px",borderRadius:8,cursor:"pointer",
-            border:"1px solid #e8e4dc",background:"#faf8f4",color:"#6b6862"
-          }}>Try again</button>
-        </div>
-      )}
-
-      <div style={{fontSize:11,color:"#b0ada8",marginTop:12}}>
-        Next pipeline run: 7:00 AM daily
-      </div>
-    </div>
-  )
-}
-
-function HistoryTab({ onTickerClick }) {
-  const [allHistory, setAllHistory] = useState(null)
-  const [search, setSearch] = useState("")
-  const [selectedTickers, setSelectedTickers] = useState([])
-  const [compareMode, setCompareMode] = useState(false)
-
-  useEffect(() => {
-    axios.get(`${API}/api/history?days=30`).then(r => {
-      setAllHistory(r.data.history)
-    })
-  }, [])
-
-  if (!allHistory) return (
-    <div style={{padding:"2rem",color:"#9a9690",fontSize:13,textAlign:"center"}}>
-      Loading history...
-    </div>
-  )
-
-  const tickers = Object.keys(allHistory).filter(t => allHistory[t].length > 0)
-    .sort((a,b) => {
-      const aScore = allHistory[a][allHistory[a].length-1]?.composite_score || 0
-      const bScore = allHistory[b][allHistory[b].length-1]?.composite_score || 0
-      return bScore - aScore
-    })
-
-  // Filter by search
-  const filtered = search.trim()
-    ? tickers.filter(t => t.toLowerCase().includes(search.toLowerCase()))
-    : tickers
-
-  if (tickers.length === 0) return (
-    <div style={{background:"#faf8f4",borderRadius:16,padding:"3rem 2rem",
-      border:"1px solid #e8e4dc",textAlign:"center"}}>
-      <div style={{fontSize:15,fontWeight:500,marginBottom:8}}>No history yet</div>
-      <div style={{fontSize:13,color:"#9a9690",lineHeight:1.6}}>
-        History builds automatically each time the pipeline runs.<br/>
-        Give it a week of daily runs and the history charts will be genuinely powerful
-        for spotting trends before the crowd does.
-      </div>
-    </div>
-  )
-
-  const displayTickers = selectedTickers.length > 0 ? selectedTickers : filtered.slice(0, 6)
-
-  return (
-    <div>
-      {/* Watchlist manager */}
-      <WatchlistManager onTickerClick={onTickerClick}/>
-
-      {/* Search + controls */}
-      <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}></div>
-      
-      {/* Insight banner */}
-      <div style={{background:"#ede9fe",border:"1px solid #c4b5fd",
-        borderRadius:16,padding:"1.25rem 1.5rem",marginBottom:"1.5rem"}}>
-        <div style={{fontSize:14,fontWeight:600,color:"#5b21b6",marginBottom:6}}>
-          History builds over time
-        </div>
-        <div style={{fontSize:13,color:"#6b6862",lineHeight:1.6,marginBottom:12}}>
-          Give it a week of daily runs and the history charts will be genuinely powerful
-          for spotting trends before the crowd does. Each morning at 7am a new snapshot
-          is saved — you'll see which stocks consistently score high vs which ones spike
-          once and fade.
-        </div>
-        <div style={{display:"flex",gap:10}}>
-          {[
-            {label:"Days tracked", value: allHistory[tickers[0]]?.length || 1},
-            {label:"Tickers in history", value: tickers.length},
-            {label:"Next run", value:"7:00 AM"},
-          ].map(m => (
-            <div key={m.label} style={{background:"rgba(255,255,255,0.7)",borderRadius:10,
-              padding:"8px 14px",flex:1,textAlign:"center"}}>
-              <div style={{fontSize:18,fontWeight:700,color:"#5b21b6"}}>{m.value}</div>
-              <div style={{fontSize:10,color:"#9a9690",marginTop:2}}>{m.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Search + controls */}
-      <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
-        <div style={{position:"relative",flex:1}}>
-          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",
-            fontSize:14,color:"#9a9690"}}>🔍</span>
-          <input
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value)
-              setSelectedTickers([])
-            }}
-            placeholder="Search tickers... (AMD, NVDA, COST)"
-            style={{width:"100%",paddingLeft:36,paddingRight:12,paddingTop:8,paddingBottom:8,
-              border:"1px solid #e8e4dc",borderRadius:10,fontSize:13,
-              background:"#faf8f4",color:"#3d3a36",outline:"none",boxSizing:"border-box"}}
-          />
-        </div>
-        <button onClick={() => setCompareMode(!compareMode)} style={{
-          fontSize:12,fontWeight:500,padding:"8px 16px",borderRadius:10,cursor:"pointer",
-          border: compareMode ? "1.5px solid #7c6fcd" : "1px solid #e8e4dc",
-          background: compareMode ? "#ede9fe" : "#faf8f4",
-          color: compareMode ? "#5b21b6" : "#6b6862",
-          whiteSpace:"nowrap"
-        }}>
-          {compareMode ? "✓ Compare mode" : "Compare"}
-        </button>
-        {selectedTickers.length > 0 && (
-          <button onClick={() => setSelectedTickers([])} style={{
-            fontSize:12,padding:"8px 14px",borderRadius:10,cursor:"pointer",
-            border:"1px solid #e8e4dc",background:"#faf8f4",color:"#9a9690"
-          }}>
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Compare mode instructions */}
-      {compareMode && selectedTickers.length === 0 && (
-        <div style={{fontSize:12,color:"#7c6fcd",marginBottom:12,
-          padding:"8px 14px",background:"#ede9fe",borderRadius:8}}>
-          Click tickers below to add them to comparison (up to 4)
-        </div>
-      )}
-
-      {/* Ticker pills */}
-      <div style={{marginBottom:16}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:8,
-          textTransform:"uppercase",letterSpacing:"0.08em"}}>
-          {search ? `Results for "${search}" — ${filtered.length} tickers` : `All tickers — sorted by score`}
-        </div>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-          {filtered.map(t => {
-            const hist = allHistory[t]
-            const latest = hist[hist.length-1]
-            const isEtf = latest?.is_etf
-            const isSelected = selectedTickers.includes(t)
-            const score = latest?.composite_score || 0
-            const change = latest?.week_change_pct || 0
-            return (
-              <button key={t} onClick={() => {
-                if (compareMode) {
-                  setSelectedTickers(prev =>
-                    prev.includes(t)
-                      ? prev.filter(x => x !== t)
-                      : prev.length < 4 ? [...prev, t] : prev
-                  )
-                } else {
-                  setSelectedTickers(prev =>
-                    prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
-                  )
-                }
-              }} style={{
-                fontSize:11,fontFamily:"monospace",fontWeight:600,
-                padding:"4px 10px",borderRadius:8,cursor:"pointer",
-                border: isSelected ? "1.5px solid #7c6fcd" : "1px solid #e8e4dc",
-                background: isSelected
-                  ? isEtf ? "#ede9fe" : "#dcfce7"
-                  : "#faf8f4",
-                color: isSelected
-                  ? isEtf ? "#5b21b6" : "#166534"
-                  : "#6b6862",
-                display:"flex",alignItems:"center",gap:4
-              }}>
-                {t}
-                <span style={{fontSize:9,fontWeight:400,
-                  color: change >= 0 ? "#5a9e3a" : "#d95f5f"}}>
-                  {change >= 0 ? "+" : ""}{change.toFixed(1)}%
-                </span>
-                <span style={{fontSize:9,color:"#9a9690"}}>{score}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Search results or add to watchlist */}
-      {search && filtered.length === 0 && (
-        <WatchlistAdd ticker={search.toUpperCase()} onAdded={() => setSearch("")}/>
-      )}
-
-      <div style={{
-        display:"grid",
-        gridTemplateColumns: compareMode && selectedTickers.length > 1
-          ? "repeat(2,minmax(0,1fr))"
-          : "repeat(2,minmax(0,1fr))",
-        gap:14
-      }}>
-        {displayTickers.map(ticker => {
-          const hist = allHistory[ticker] || []
-          if (hist.length === 0) return null
-          const latest = hist[hist.length-1]
-          const first = hist[0]
-          const scoreDelta = latest.composite_score - first.composite_score
-          const trend = scoreDelta > 2 ? "↑ rising" : scoreDelta < -2 ? "↓ falling" : "→ stable"
-          const trendColor = scoreDelta > 2 ? "#5a9e3a" : scoreDelta < -2 ? "#d95f5f" : "#9a9690"
-
-          return (
-            <div key={ticker} style={{background:"#faf8f4",borderRadius:16,
-              padding:"16px 18px",border:"1px solid #e8e4dc"}}>
-
-              {/* Header */}
-              <div style={{display:"flex",justifyContent:"space-between",
-                alignItems:"center",marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <button onClick={() => onTickerClick(ticker)} style={{
-                    fontFamily:"monospace",fontWeight:700,fontSize:16,
-                    background:"none",border:"none",cursor:"pointer",
-                    color:"#3d3a36",padding:0,textDecoration:"underline",
-                    textDecorationColor:"#d4d0c8"
-                  }}>{ticker}</button>
-                  <span style={{fontSize:10,padding:"2px 7px",borderRadius:8,fontWeight:500,
-                    background:latest.is_etf?"#ede9fe":"#dcfce7",
-                    color:latest.is_etf?"#5b21b6":"#166534"}}>
-                    {latest.is_etf?"ETF":"Stock"}
-                  </span>
-                  <span style={{fontSize:11,color:"#9a9690"}}>{latest.sector}</span>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:15,fontWeight:700}}>{latest.composite_score}/100</div>
-                  <div style={{fontSize:11,color:trendColor,fontWeight:500}}>{trend}</div>
-                </div>
-              </div>
-
-              {/* 9-signal mini breakdown */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}}>
-                {[
-                  {label:"Price", value: latest.price_score || 0, color:"#4f8ef7"},
-                  {label:"Sentiment", value: latest.sentiment_score || 0, color:"#5a9e3a"},
-                  {label:"Buzz", value: latest.buzz_score || 0, color:"#7c6fcd"},
-                  {label:"StockTwits", value: latest.st_score || 0, color:"#0ea5e9"},
-                  {label:"Fundamentals", value: latest.fundamental_score || 50, color:"#059669"},
-                  {label:"Options", value: latest.options_score || 50, color:"#f59e0b"},
-                ].map(s => (
-                  <div key={s.label} style={{background:"#f5f3ef",borderRadius:8,padding:"6px 8px"}}>
-                    <div style={{fontSize:9,color:"#9a9690",marginBottom:2}}>{s.label}</div>
-                    <div style={{background:"#e8e4dc",borderRadius:3,height:4}}>
-                      <div style={{width:`${s.value}%`,height:4,borderRadius:3,background:s.color}}/>
-                    </div>
-                    <div style={{fontSize:10,fontWeight:600,color:"#3d3a36",marginTop:2}}>
-                      {Math.round(s.value)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Score chart */}
-              <div style={{marginBottom:6}}>
-                <div style={{fontSize:10,color:"#9a9690",marginBottom:4}}>Composite score</div>
-                <HistoryChart history={hist} width={460}/>
-              </div>
-
-              {/* Sentiment chart */}
-              {hist.length > 1 && (
-                <div>
-                  <div style={{fontSize:10,color:"#9a9690",marginBottom:2,marginTop:8}}>Sentiment</div>
-                  <SentimentHistoryChart history={hist} width={460}/>
-                </div>
-              )}
-
-              {/* Footer stats */}
-              <div style={{display:"flex",justifyContent:"space-between",
-                alignItems:"center",marginTop:10,paddingTop:10,
-                borderTop:"0.5px solid #e8e4dc",flexWrap:"wrap",gap:8}}>
-                <span style={{fontSize:11,color:"#9a9690"}}>
-                  {hist.length} day{hist.length !== 1 ? "s" : ""} tracked
-                </span>
-                <div style={{display:"flex",gap:12}}>
-                  <span style={{fontSize:11,color:"#9a9690"}}>
-                    Price: <span style={{fontWeight:600,
-                      color:latest.week_change_pct>=0?"#5a9e3a":"#d95f5f"}}>
-                      {latest.week_change_pct>=0?"+":""}{fmt(latest.week_change_pct)}%
-                    </span>
-                  </span>
-                  <span style={{fontSize:11,color:"#9a9690"}}>
-                    Score Δ: <span style={{fontWeight:600,color:trendColor}}>
-                      {scoreDelta>=0?"+":""}{scoreDelta.toFixed(1)}
-                    </span>
-                  </span>
-                  {latest.rsi && (
-                    <span style={{fontSize:11,color:"#9a9690"}}>
-                      RSI: <span style={{fontWeight:600,
-                        color: latest.rsi > 70 ? "#d95f5f" : latest.rsi < 30 ? "#5a9e3a" : "#3d3a36"}}>
-                        {latest.rsi}
-                      </span>
-                    </span>
-                  )}
-                  {latest.search_trend && latest.search_trend !== "stable" && (
-                    <span style={{fontSize:11,fontWeight:500,
-                      color: latest.search_trend === "rising" ? "#5a9e3a" : "#d95f5f"}}>
-                      🔍 {latest.search_trend}
-                    </span>
-                  )}
-                  {latest.unusual_options && (
-                    <span style={{fontSize:11,color:"#92400e",fontWeight:500}}>
-                      ⚡ unusual options
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
+// ─── Ticker Card ─────────────────────────────────────────────────
 function TickerCard({ t, rank, onClick }) {
   const up = t.week_change_pct >= 0
+  const sentColor = t.avg_sentiment > 0.1 ? C.green : t.avg_sentiment < -0.1 ? C.red : C.amber
+  const sentLabel = t.avg_sentiment > 0.1 ? "bullish" : t.avg_sentiment < -0.1 ? "bearish" : "neutral"
+  const sentBadge = t.avg_sentiment > 0.1 ? "green" : t.avg_sentiment < -0.1 ? "red" : "amber"
+
   return (
     <div onClick={() => onClick(t.ticker)} style={{
-      background:"#faf8f4",borderRadius:16,padding:"16px",cursor:"pointer",
-      border: rank === 1 ? "1.5px solid #7c6fcd" : "1px solid #e8e4dc",
-      transition:"transform 0.15s, box-shadow 0.15s",
-      boxShadow: rank === 1 ? "0 4px 20px rgba(124,111,205,0.15)" : "none"
+      ...S.card,
+      padding:"14px",
+      cursor:"pointer",
+      transition:"border-color 0.15s, transform 0.15s",
+      ...(rank === 1 ? {borderColor:C.purple, boxShadow:`0 0 0 1px ${C.purple}40`} : {})
     }}
-    onMouseEnter={e => { e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)" }}
-    onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow=rank===1?"0 4px 20px rgba(124,111,205,0.15)":"none" }}
+    onMouseEnter={e => { e.currentTarget.style.borderColor=C.accent; e.currentTarget.style.transform="translateY(-2px)" }}
+    onMouseLeave={e => { e.currentTarget.style.borderColor=rank===1?C.purple:C.border; e.currentTarget.style.transform="translateY(0)" }}
     >
       {rank === 1 && (
-        <div style={{fontSize:10,background:"#ede9fe",color:"#5b21b6",padding:"2px 8px",
-          borderRadius:10,fontWeight:600,display:"inline-block",marginBottom:8}}>
-          top pick
+        <div style={{fontSize:9, background:C.purpleDim, color:C.purpleText,
+          padding:"2px 7px", borderRadius:10, fontWeight:700, letterSpacing:"0.06em",
+          display:"inline-block", marginBottom:8, border:`1px solid ${C.purple}50`}}>
+          TOP PICK
         </div>
       )}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8}}>
         <div>
-          <div style={{fontSize:16,fontWeight:700,fontFamily:"monospace",letterSpacing:"-0.3px"}}>{t.ticker}</div>
-          <div style={{fontSize:10,color:"#9a9690",marginTop:1}}>{t.sector}</div>
+          <div style={{fontSize:15, fontWeight:700, ...S.mono, color:C.text}}>{t.ticker}</div>
+          <div style={{fontSize:10, color:C.textMuted, marginTop:1}}>{t.sector}</div>
         </div>
-        <ScoreArc value={t.composite_score}/>
+        <ScoreRing value={t.composite_score} size={48}/>
       </div>
-      <div style={{marginBottom:8}}>
-        <Sparkline data={t.price_history} width={160} height={28}/>
+      <div style={{marginBottom:6}}>
+        <Sparkline data={t.price_history} width={150} height={26}/>
       </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-        <span style={{fontSize:18,fontWeight:600}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+        <span style={{fontSize:16, fontWeight:700, ...S.mono, color:C.text}}>
           {t.latest_close ? `$${fmt(t.latest_close)}` : "—"}
         </span>
-        <span style={{fontSize:13,fontWeight:600,color:up?"#5a9e3a":"#d95f5f"}}>
+        <span style={{fontSize:12, fontWeight:600, color: up ? C.green : C.red}}>
           {t.latest_close ? `${up?"+":""}${fmt(t.week_change_pct)}%` : "—"}
         </span>
       </div>
       {t.reasoning?.thesis && (
-        <div style={{fontSize:11,color:"#6b6862",lineHeight:1.4,marginBottom:8,
-          borderLeft:"2px solid #d4d0c8",paddingLeft:8}}>
+        <div style={{fontSize:10, color:C.textMuted, lineHeight:1.4, marginBottom:8,
+          borderLeft:`2px solid ${C.border}`, paddingLeft:7}}>
           {t.reasoning.thesis}
         </div>
       )}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-        {t.avg_sentiment > 0.1
-          ? <span style={{fontSize:10,background:"#dcfce7",color:"#166534",padding:"2px 7px",borderRadius:8,fontWeight:500}}>bullish</span>
-          : t.avg_sentiment < -0.1
-          ? <span style={{fontSize:10,background:"#fee2e2",color:"#991b1b",padding:"2px 7px",borderRadius:8,fontWeight:500}}>bearish</span>
-          : <span style={{fontSize:10,background:"#f3f4f6",color:"#6b7280",padding:"2px 7px",borderRadius:8,fontWeight:500}}>neutral</span>
-        }
-        {t.mentions > 0 && (
-          <span style={{fontSize:10,background:"#ede9fe",color:"#5b21b6",padding:"2px 7px",borderRadius:8,fontWeight:500}}>
-            {t.mentions} mentions
-          </span>
+      <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+        <Badge color={sentBadge}>{sentLabel}</Badge>
+        {t.mentions > 0 && <Badge color="purple">{t.mentions} mentions</Badge>}
+        {t.volume_spike > 1.5 && <Badge color="amber">⚡ {t.volume_spike}x vol</Badge>}
+        {t.congress_signal && t.congress_signal !== "neutral" && t.congress_signal !== "no_data" && (
+          <Badge color={t.congress_signal.includes("buy") ? "green" : "red"}>
+            🏛 {t.congress_signal.replace(/_/g," ")}
+          </Badge>
         )}
-        {t.volume_spike > 1.5 && (
-          <span style={{fontSize:10,background:"#fef3c7",color:"#92400e",padding:"2px 7px",borderRadius:8,fontWeight:500}}>
-            ⚡ {t.volume_spike}x vol
-          </span>
-        )}
-        {t.earnings_date && (
-          <span style={{fontSize:10,background:"#fff8ed",color:"#92400e",padding:"2px 7px",borderRadius:8,fontWeight:500}}>
-            📅 {t.earnings_date}
-          </span>
-        )}
+        {t.earnings_date && <Badge color="amber">📅 {t.earnings_date}</Badge>}
       </div>
-      <div style={{marginTop:10,fontSize:11,color:"#9a9690",textAlign:"center"}}>
+      <div style={{marginTop:10, fontSize:10, color:C.textDim, textAlign:"center"}}>
         click for full analysis →
       </div>
     </div>
   )
 }
 
+// ─── Sector components ───────────────────────────────────────────
 function SectorBar({ sectors }) {
   const max = Math.max(...sectors.map(s => Math.abs(s.avg_change)))
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{display:"flex", flexDirection:"column", gap:8}}>
       {sectors.map(s => (
-        <div key={s.sector} style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{fontSize:12,color:"#6b6862",width:160,flexShrink:0,textAlign:"right"}}>{s.sector}</div>
-          <div style={{flex:1,background:"#e8e4dc",borderRadius:4,height:8}}>
-            <div style={{width:`${(Math.abs(s.avg_change)/max)*100}%`,height:8,borderRadius:4,
-              background:s.avg_change>=0?"#5a9e3a":"#d95f5f",transition:"width 0.5s"}}/>
+        <div key={s.sector} style={{display:"flex", alignItems:"center", gap:10}}>
+          <div style={{fontSize:11, color:C.textMuted, width:155, flexShrink:0, textAlign:"right"}}>{s.sector}</div>
+          <div style={{flex:1, background:C.border, borderRadius:3, height:7}}>
+            <div style={{
+              width:`${(Math.abs(s.avg_change)/max)*100}%`, height:7, borderRadius:3,
+              background: s.avg_change >= 0 ? C.green : C.red, transition:"width 0.5s"
+            }}/>
           </div>
-          <div style={{fontSize:12,fontWeight:600,width:56,color:s.avg_change>=0?"#5a9e3a":"#d95f5f"}}>
+          <div style={{fontSize:11, fontWeight:700, width:54, ...S.mono,
+            color:s.avg_change>=0?C.green:C.red}}>
             {s.avg_change>=0?"+":""}{(s.avg_change||0).toFixed(2)}%
           </div>
         </div>
@@ -977,44 +679,41 @@ function SectorDrilldown({ sectors, onTickerClick }) {
   useEffect(() => setActive(sectors[0]), [sectors])
   return (
     <div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+      <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:12}}>
         {sectors.map(s => (
           <button key={s.sector} onClick={() => setActive(s)} style={{
-            fontSize:12,padding:"6px 14px",borderRadius:20,cursor:"pointer",fontWeight:500,
-            border:active?.sector===s.sector?"1.5px solid #7c6fcd":"1px solid #e8e4dc",
-            background:active?.sector===s.sector?"#ede9fe":"#faf8f4",
-            color:active?.sector===s.sector?"#5b21b6":"#6b6862"
+            fontSize:11, padding:"5px 12px", borderRadius:16, cursor:"pointer", fontWeight:500,
+            border: active?.sector===s.sector ? `1px solid ${C.purple}` : `1px solid ${C.border}`,
+            background: active?.sector===s.sector ? C.purpleDim : C.surfaceAlt,
+            color: active?.sector===s.sector ? C.purpleText : C.textMuted
           }}>{s.sector}</button>
         ))}
       </div>
       {active && (
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:8}}>
           {active.top_5.map(t => (
             <div key={t.ticker} onClick={() => onTickerClick(t.ticker)} style={{
-              background:"#f5f3ef",borderRadius:12,padding:"12px 14px",cursor:"pointer",
-              border:"1px solid #e8e4dc",transition:"background 0.15s"
+              background:C.bg, borderRadius:10, padding:"10px 12px", cursor:"pointer",
+              border:`1px solid ${C.border}`, transition:"border-color 0.15s"
             }}
-            onMouseEnter={e=>e.currentTarget.style.background="#edeae4"}
-            onMouseLeave={e=>e.currentTarget.style.background="#f5f3ef"}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontFamily:"monospace",fontWeight:700,fontSize:14}}>{t.ticker}</span>
-                  <span style={{fontSize:10,padding:"2px 7px",borderRadius:8,fontWeight:500,
-                    background:t.is_etf?"#ede9fe":"#dcfce7",color:t.is_etf?"#5b21b6":"#166534"}}>
-                    {t.is_etf?"ETF":"Stock"}
-                  </span>
+            onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5}}>
+                <div style={{display:"flex", alignItems:"center", gap:6}}>
+                  <span style={{...S.mono, fontWeight:700, fontSize:13, color:C.text}}>{t.ticker}</span>
+                  <Badge color={t.is_etf?"purple":"green"}>{t.is_etf?"ETF":"Stock"}</Badge>
                 </div>
-                <span style={{fontSize:14,fontWeight:700,color:t.week_change_pct>=0?"#5a9e3a":"#d95f5f"}}>
+                <span style={{fontSize:13, fontWeight:700, ...S.mono, color:t.week_change_pct>=0?C.green:C.red}}>
                   {t.week_change_pct>=0?"+":""}{(t.week_change_pct||0).toFixed(2)}%
                 </span>
               </div>
-              <div style={{background:"#e8e4dc",borderRadius:3,height:5,marginBottom:6}}>
-                <div style={{width:`${t.composite_score}%`,height:5,borderRadius:3,
-                  background:t.composite_score>=55?"#5a9e3a":t.composite_score>=45?"#c8841a":"#d95f5f"}}/>
+              <div style={{background:C.border, borderRadius:3, height:4, marginBottom:5}}>
+                <div style={{width:`${t.composite_score}%`, height:4, borderRadius:3,
+                  background:t.composite_score>=60?C.green:t.composite_score>=45?C.amber:C.red}}/>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:11,color:"#9a9690"}}>Score: {t.composite_score}</span>
-                <span style={{fontSize:11,color:"#9a9690"}}>→ full analysis</span>
+              <div style={{display:"flex", justifyContent:"space-between"}}>
+                <span style={{fontSize:10, color:C.textMuted}}>Score: {t.composite_score}</span>
+                <span style={{fontSize:10, color:C.textDim}}>→ full analysis</span>
               </div>
             </div>
           ))}
@@ -1024,206 +723,421 @@ function SectorDrilldown({ sectors, onTickerClick }) {
   )
 }
 
+// ─── Events Sidebar ──────────────────────────────────────────────
 function EventsSidebar() {
   const [events, setEvents] = useState(null)
-
-  useEffect(() => {
-    axios.get(`${API}/api/events`).then(r => setEvents(r.data.events))
-  }, [])
-
+  useEffect(() => { axios.get(`${API}/api/events`).then(r => setEvents(r.data.events)) }, [])
   if (!events) return null
-
-  const typeColors = {
-    fed: { bg: "#fef2f2", border: "#fca5a5", text: "#991b1b", icon: "🏦" },
-    economic: { bg: "#fffbeb", border: "#fde68a", text: "#92400e", icon: "📊" },
-    earnings: { bg: "#f0fdf4", border: "#86efac", text: "#166534", icon: "📅" },
-  }
 
   return (
     <div style={{
-      width: 260, flexShrink: 0,
-      background: "#faf8f4", borderRadius: 16,
-      border: "1px solid #e8e4dc", padding: "1rem",
-      height: "fit-content", position: "sticky", top: 72
+      width:250, flexShrink:0, ...S.card,
+      padding:"1rem", height:"fit-content", position:"sticky", top:68
     }}>
-      <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:12,
-        textTransform:"uppercase",letterSpacing:"0.08em"}}>
-        Market events
-      </div>
-
-      {events.length === 0 ? (
-        <div style={{fontSize:12,color:"#9a9690"}}>No major events in next 14 days</div>
-      ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {events.map((e, i) => {
-            const colors = typeColors[e.type] || typeColors.economic
+      <div style={{...S.label, marginBottom:12}}>Market events</div>
+      {events.length === 0
+        ? <div style={{fontSize:12, color:C.textDim}}>No major events in next 14 days</div>
+        : <div style={{display:"flex", flexDirection:"column", gap:7}}>
+          {events.map((e,i) => {
+            const isFed = e.type === "fed"
+            const isEcon = e.type === "economic"
+            const borderColor = isFed ? "#da3633" : isEcon ? "#9e6a03" : "#2ea043"
+            const bgColor = isFed ? C.redDim : isEcon ? C.amberDim : C.greenDim
             const label = e.is_today ? "TODAY" : e.is_tomorrow ? "TOMORROW" : `in ${e.days_away}d`
             return (
-              <div key={i} style={{
-                background: colors.bg,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 10, padding: "8px 10px"
-              }}>
-                <div style={{display:"flex",justifyContent:"space-between",
-                  alignItems:"center",marginBottom:3}}>
-                  <span style={{fontSize:10,fontWeight:700,
-                    color: e.is_today ? "#991b1b" : e.is_tomorrow ? "#92400e" : "#9a9690"}}>
-                    {label}
-                  </span>
-                  <span style={{fontSize:10,color:colors.text,fontWeight:500}}>
-                    {e.impact === "high" ? "🔴 high" : "🟡 medium"}
-                  </span>
+              <div key={i} style={{background:bgColor, border:`1px solid ${borderColor}`, borderRadius:8, padding:"8px 10px"}}>
+                <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3}}>
+                  <span style={{fontSize:9, fontWeight:700, color:C.textMuted}}>{label}</span>
+                  <span style={{fontSize:9, color:C.textMuted}}>{e.impact==="high"?"🔴 high":"🟡 med"}</span>
                 </div>
-                <div style={{fontSize:12,fontWeight:600,color:"#3d3a36",marginBottom:2}}>
-                  {colors.icon} {e.event}
+                <div style={{fontSize:11, fontWeight:600, color:C.text, marginBottom:2}}>
+                  {isFed?"🏦":isEcon?"📊":"📅"} {e.event}
                 </div>
-                <div style={{fontSize:10,color:"#9a9690"}}>{e.date}</div>
+                <div style={{fontSize:9, color:C.textMuted}}>{e.date}</div>
               </div>
             )
           })}
         </div>
-      )}
-
-      <div style={{marginTop:12,paddingTop:12,borderTop:"0.5px solid #e8e4dc",
-        fontSize:10,color:"#9a9690",lineHeight:1.5}}>
+      }
+      <div style={{marginTop:10, paddingTop:10, borderTop:`1px solid ${C.border}`,
+        fontSize:10, color:C.textDim, lineHeight:1.5}}>
         High impact events can move markets 1-3%. Fed decisions especially.
       </div>
     </div>
   )
 }
 
+// ─── Watchlist ───────────────────────────────────────────────────
+function WatchlistManager({ onTickerClick }) {
+  const [watchlist, setWatchlist] = useState([])
+  const [removing, setRemoving] = useState(null)
+  useEffect(() => { axios.get(`${API}/api/watchlist`).then(r => setWatchlist(r.data.tickers || [])) }, [])
+  if (watchlist.length === 0) return null
+  const handleRemove = async (ticker) => {
+    setRemoving(ticker)
+    await axios.delete(`${API}/api/watchlist/${ticker}`)
+    setWatchlist(prev => prev.filter(t => t !== ticker))
+    setRemoving(null)
+  }
+  return (
+    <div style={{...S.card, padding:"12px 14px", marginBottom:14}}>
+      <div style={{...S.label, marginBottom:8}}>My watchlist — {watchlist.length} ticker{watchlist.length!==1?"s":""}</div>
+      <div style={{display:"flex", gap:5, flexWrap:"wrap"}}>
+        {watchlist.map(ticker => (
+          <div key={ticker} style={{display:"flex", alignItems:"center", gap:3,
+            background:C.bg, borderRadius:7, padding:"3px 8px", border:`1px solid ${C.border}`}}>
+            <button onClick={() => onTickerClick(ticker)} style={{
+              ...S.mono, fontWeight:600, fontSize:11, background:"none", border:"none",
+              cursor:"pointer", color:C.text, padding:0
+            }}>{ticker}</button>
+            <button onClick={() => handleRemove(ticker)} style={{
+              background:"none", border:"none", cursor:"pointer",
+              color: removing===ticker ? C.textDim : C.red, fontSize:11, padding:"0 2px"
+            }}>{removing===ticker?"…":"✕"}</button>
+          </div>
+        ))}
+      </div>
+      <div style={{fontSize:10, color:C.textDim, marginTop:6}}>
+        Tracked tickers appear in history after the next pipeline run
+      </div>
+    </div>
+  )
+}
+
+function WatchlistAdd({ ticker, onAdded }) {
+  const [status, setStatus] = useState("idle")
+  const [message, setMessage] = useState("")
+  const handleAdd = async () => {
+    setStatus("loading")
+    try {
+      const r = await axios.post(`${API}/api/watchlist/${ticker}`)
+      if (r.data.success) { setStatus("success"); setMessage(r.data.message); setTimeout(()=>onAdded(),2000) }
+      else { setStatus("error"); setMessage(r.data.error||"Could not add ticker") }
+    } catch { setStatus("error"); setMessage("Failed to connect to API") }
+  }
+  return (
+    <div style={{...S.card, padding:"2rem", textAlign:"center", marginBottom:14}}>
+      <div style={{fontSize:20, fontWeight:700, ...S.mono, color:C.text, marginBottom:6}}>{ticker}</div>
+      <div style={{fontSize:12, color:C.textMuted, marginBottom:14}}>
+        Not tracked yet — add it to your watchlist and it will appear in history after the next pipeline run
+      </div>
+      {status==="idle" && (
+        <button onClick={handleAdd} style={{
+          fontSize:12, fontWeight:600, padding:"8px 20px", borderRadius:8,
+          cursor:"pointer", border:"none", background:C.purple, color:"#fff"
+        }}>+ Add {ticker} to watchlist</button>
+      )}
+      {status==="loading" && <div style={{fontSize:12,color:C.textMuted}}>Validating ticker...</div>}
+      {status==="success" && <div style={{fontSize:12,color:C.green,fontWeight:500}}>✓ {message}</div>}
+      {status==="error" && (
+        <div>
+          <div style={{fontSize:12,color:C.red,marginBottom:6}}>{message}</div>
+          <button onClick={()=>setStatus("idle")} style={{
+            fontSize:11, padding:"5px 12px", borderRadius:7, cursor:"pointer",
+            border:`1px solid ${C.border}`, background:C.surfaceAlt, color:C.textMuted
+          }}>Try again</button>
+        </div>
+      )}
+      <div style={{fontSize:10, color:C.textDim, marginTop:10}}>Next pipeline run: 6:00 AM daily</div>
+    </div>
+  )
+}
+
+// ─── History Tab ─────────────────────────────────────────────────
+function HistoryTab({ onTickerClick }) {
+  const [allHistory, setAllHistory] = useState(null)
+  const [search, setSearch] = useState("")
+  const [selected, setSelected] = useState([])
+  const [compareMode, setCompareMode] = useState(false)
+
+  useEffect(() => {
+    axios.get(`${API}/api/history?days=30`).then(r => setAllHistory(r.data.history))
+  }, [])
+
+  if (!allHistory) return (
+    <div style={{padding:"2rem", color:C.textDim, fontSize:13, textAlign:"center"}}>Loading history...</div>
+  )
+
+  const tickers = Object.keys(allHistory).filter(t => allHistory[t].length > 0)
+    .sort((a,b) => {
+      const as = allHistory[a][allHistory[a].length-1]?.composite_score || 0
+      const bs = allHistory[b][allHistory[b].length-1]?.composite_score || 0
+      return bs - as
+    })
+
+  const filtered = search.trim() ? tickers.filter(t => t.toLowerCase().includes(search.toLowerCase())) : tickers
+  const display = selected.length > 0 ? selected : filtered.slice(0,6)
+
+  return (
+    <div>
+      <WatchlistManager onTickerClick={onTickerClick}/>
+
+      {/* Banner */}
+      <div style={{...S.card, background:C.purpleDim, borderColor:"#6e40c9", padding:"1.25rem 1.5rem", marginBottom:"1.25rem"}}>
+        <div style={{fontSize:13, fontWeight:600, color:C.purpleText, marginBottom:5}}>History builds over time</div>
+        <div style={{fontSize:12, color:C.textMuted, lineHeight:1.6, marginBottom:12}}>
+          Each morning at 6am a snapshot is saved. After 30 days you'll see which stocks consistently score high vs which ones spike and fade.
+        </div>
+        <div style={{display:"flex", gap:10}}>
+          {[
+            {label:"Days tracked", value: allHistory[tickers[0]]?.length || 1},
+            {label:"Tickers in history", value: tickers.length},
+            {label:"Next run", value:"6:00 AM"},
+          ].map(m => (
+            <div key={m.label} style={{background:"rgba(255,255,255,0.05)", borderRadius:8,
+              padding:"8px 12px", flex:1, textAlign:"center"}}>
+              <div style={{fontSize:16, fontWeight:700, color:C.purpleText, ...S.mono}}>{m.value}</div>
+              <div style={{fontSize:9, color:C.textMuted, marginTop:2, ...S.label}}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div style={{display:"flex", gap:8, marginBottom:12, alignItems:"center"}}>
+        <div style={{position:"relative", flex:1}}>
+          <span style={{position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:13, color:C.textDim}}>🔍</span>
+          <input value={search} onChange={e=>{setSearch(e.target.value);setSelected([])}}
+            placeholder="Search tickers... (AMD, NVDA, COST)"
+            style={{width:"100%", paddingLeft:32, paddingRight:12, paddingTop:7, paddingBottom:7,
+              border:`1px solid ${C.border}`, borderRadius:8, fontSize:12,
+              background:C.bg, color:C.text, outline:"none", boxSizing:"border-box"}}/>
+        </div>
+        <button onClick={() => setCompareMode(!compareMode)} style={{
+          fontSize:11, fontWeight:600, padding:"7px 14px", borderRadius:8, cursor:"pointer",
+          border: compareMode ? `1px solid ${C.purple}` : `1px solid ${C.border}`,
+          background: compareMode ? C.purpleDim : C.surfaceAlt,
+          color: compareMode ? C.purpleText : C.textMuted, whiteSpace:"nowrap"
+        }}>{compareMode ? "✓ Compare" : "Compare"}</button>
+        {selected.length > 0 && (
+          <button onClick={() => setSelected([])} style={{
+            fontSize:11, padding:"7px 12px", borderRadius:8, cursor:"pointer",
+            border:`1px solid ${C.border}`, background:C.surfaceAlt, color:C.textMuted
+          }}>Clear</button>
+        )}
+      </div>
+
+      {/* Ticker pills */}
+      <div style={{marginBottom:14}}>
+        <div style={{...S.label, marginBottom:6}}>
+          {search ? `Results for "${search}" — ${filtered.length} tickers` : "All tickers — sorted by score"}
+        </div>
+        <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+          {filtered.map(t => {
+            const hist = allHistory[t]
+            const latest = hist[hist.length-1]
+            const isSelected = selected.includes(t)
+            const score = latest?.composite_score || 0
+            const change = latest?.week_change_pct || 0
+            return (
+              <button key={t} onClick={() => {
+                if (compareMode) setSelected(prev => prev.includes(t) ? prev.filter(x=>x!==t) : prev.length<4?[...prev,t]:prev)
+                else setSelected(prev => prev.includes(t) ? prev.filter(x=>x!==t) : [...prev,t])
+              }} style={{
+                fontSize:10, ...S.mono, fontWeight:600, padding:"3px 8px", borderRadius:6, cursor:"pointer",
+                border: isSelected ? `1px solid ${C.purple}` : `1px solid ${C.border}`,
+                background: isSelected ? C.purpleDim : C.bg,
+                color: isSelected ? C.purpleText : C.textMuted,
+                display:"flex", alignItems:"center", gap:4
+              }}>
+                {t}
+                <span style={{fontSize:8, color:change>=0?C.green:C.red}}>{change>=0?"+":""}{change.toFixed(1)}%</span>
+                <span style={{fontSize:8, color:C.textDim}}>{score}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {search && filtered.length === 0 && (
+        <WatchlistAdd ticker={search.toUpperCase()} onAdded={() => setSearch("")}/>
+      )}
+
+      <div style={{display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:12}}>
+        {display.map(ticker => {
+          const hist = allHistory[ticker] || []
+          if (hist.length === 0) return null
+          const latest = hist[hist.length-1]
+          const first = hist[0]
+          const delta = latest.composite_score - first.composite_score
+          const trend = delta > 2 ? "↑ rising" : delta < -2 ? "↓ falling" : "→ stable"
+          const trendColor = delta > 2 ? C.green : delta < -2 ? C.red : C.textMuted
+          return (
+            <div key={ticker} style={{...S.card, padding:"14px 16px"}}>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+                <div style={{display:"flex", alignItems:"center", gap:6}}>
+                  <button onClick={() => onTickerClick(ticker)} style={{
+                    ...S.mono, fontWeight:700, fontSize:15, background:"none", border:"none",
+                    cursor:"pointer", color:C.accent, padding:0
+                  }}>{ticker}</button>
+                  <Badge color={latest.is_etf?"purple":"green"}>{latest.is_etf?"ETF":"Stock"}</Badge>
+                  <span style={{fontSize:10, color:C.textMuted}}>{latest.sector}</span>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:14, fontWeight:700, ...S.mono, color:C.text}}>{latest.composite_score}/100</div>
+                  <div style={{fontSize:10, color:trendColor}}>{trend}</div>
+                </div>
+              </div>
+
+              {/* Mini signal bars */}
+              <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:5, marginBottom:10}}>
+                {[
+                  {label:"Price", value:latest.price_score||0, color:C.blue},
+                  {label:"Sentiment", value:latest.sentiment_score||0, color:C.green},
+                  {label:"Buzz", value:latest.buzz_score||0, color:C.purple},
+                  {label:"StockTwits", value:latest.st_score||0, color:"#0ea5e9"},
+                  {label:"Fundamentals", value:latest.fundamental_score||50, color:C.green},
+                  {label:"Options", value:latest.options_score||50, color:C.amber},
+                ].map(s => (
+                  <div key={s.label} style={{background:C.bg, borderRadius:6, padding:"5px 7px", border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:8, color:C.textDim, marginBottom:2}}>{s.label}</div>
+                    <div style={{background:C.border, borderRadius:2, height:3}}>
+                      <div style={{width:`${s.value}%`, height:3, borderRadius:2, background:s.color}}/>
+                    </div>
+                    <div style={{fontSize:9, fontWeight:700, color:C.text, marginTop:2, ...S.mono}}>{Math.round(s.value)}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{fontSize:10, color:C.textMuted, marginBottom:3}}>Composite score</div>
+              <HistoryChart history={hist} width={440}/>
+
+              {hist.length > 1 && (
+                <>
+                  <div style={{fontSize:10, color:C.textMuted, marginBottom:2, marginTop:8}}>Sentiment</div>
+                  <SentimentChart history={hist} width={440}/>
+                </>
+              )}
+
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center",
+                marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}`, flexWrap:"wrap", gap:6}}>
+                <span style={{fontSize:10, color:C.textDim}}>{hist.length} day{hist.length!==1?"s":""} tracked</span>
+                <div style={{display:"flex", gap:10}}>
+                  <span style={{fontSize:10, color:C.textMuted}}>
+                    Price: <span style={{fontWeight:600, ...S.mono, color:latest.week_change_pct>=0?C.green:C.red}}>
+                      {latest.week_change_pct>=0?"+":""}{fmt(latest.week_change_pct)}%
+                    </span>
+                  </span>
+                  <span style={{fontSize:10, color:C.textMuted}}>
+                    Δ score: <span style={{fontWeight:600, ...S.mono, color:trendColor}}>
+                      {delta>=0?"+":""}{delta.toFixed(1)}
+                    </span>
+                  </span>
+                  {latest.rsi && (
+                    <span style={{fontSize:10, color:C.textMuted}}>
+                      RSI: <span style={{fontWeight:600, ...S.mono,
+                        color:latest.rsi>70?C.red:latest.rsi<30?C.green:C.text}}>{latest.rsi}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Strategies Tab ──────────────────────────────────────────────
 function StrategiesTab({ onTickerClick }) {
   const [strategies, setStrategies] = useState(null)
   const [amount, setAmount] = useState(100)
-  const [activeStrategy, setActiveStrategy] = useState(0)
+  const [active, setActive] = useState(0)
 
-  useEffect(() => {
-    axios.get(`${API}/api/strategies`).then(r => setStrategies(r.data))
-  }, [])
-
+  useEffect(() => { axios.get(`${API}/api/strategies`).then(r => setStrategies(r.data)) }, [])
   if (!strategies) return (
-    <div style={{padding:"2rem",color:"#9a9690",fontSize:13,textAlign:"center"}}>
+    <div style={{padding:"2rem", color:C.textDim, fontSize:13, textAlign:"center"}}>
       Building strategies from live data...
     </div>
   )
 
-  const strategy = strategies.strategies[activeStrategy]
-
-  const riskColors = {
-    1: {bg:"#f0fdf4", border:"#86efac", text:"#166534", label:"Low risk"},
-    2: {bg:"#fffbeb", border:"#fde68a", text:"#92400e", label:"Medium risk"},
-    3: {bg:"#fef2f2", border:"#fca5a5", text:"#991b1b", label:"High risk"},
+  const strategy = strategies.strategies[active]
+  const riskPalette = {
+    1: {bg:C.greenDim, border:"#2ea043", text:C.greenText, label:"Low risk"},
+    2: {bg:C.amberDim, border:"#9e6a03", text:C.amberText, label:"Medium risk"},
+    3: {bg:C.redDim, border:"#da3633", text:C.redText, label:"High risk"},
   }
-  const rc = riskColors[strategy.risk_level]
+  const rp = riskPalette[strategy.risk_level]
 
   return (
     <div>
-      <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",
-        border:"1px solid #e8e4dc",marginBottom:"1.5rem"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <div style={{...S.card, padding:"1.25rem 1.5rem", marginBottom:"1.25rem"}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
           <div>
-            <div style={{fontSize:16,fontWeight:700,marginBottom:4}}>Investment strategies</div>
-            <div style={{fontSize:13,color:"#9a9690"}}>
-              Built from live scores — updated every time the pipeline runs
-            </div>
+            <div style={{fontSize:15, fontWeight:700, color:C.text, marginBottom:3}}>Investment strategies</div>
+            <div style={{fontSize:12, color:C.textMuted}}>Built from live scores — updated every pipeline run</div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:13,color:"#6b6862"}}>I have</span>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            <span style={{fontSize:12, color:C.textMuted}}>Invest</span>
             <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",
-                fontSize:14,color:"#3d3a36",fontWeight:500}}>$</span>
-              <input
-                type="number"
-                value={amount}
-                onChange={e => setAmount(Math.max(1, Number(e.target.value)))}
-                style={{width:100,paddingLeft:24,paddingRight:8,paddingTop:6,paddingBottom:6,
-                  border:"1px solid #e8e4dc",borderRadius:8,fontSize:14,fontWeight:600,
-                  background:"#f5f3ef",color:"#3d3a36",outline:"none"}}
-              />
+              <span style={{position:"absolute", left:8, top:"50%", transform:"translateY(-50%)",
+                fontSize:13, color:C.text, fontWeight:500}}>$</span>
+              <input type="number" value={amount} onChange={e=>setAmount(Math.max(1,Number(e.target.value)))}
+                style={{width:90, paddingLeft:20, paddingRight:8, paddingTop:5, paddingBottom:5,
+                  border:`1px solid ${C.border}`, borderRadius:7, fontSize:13, fontWeight:700,
+                  background:C.bg, color:C.text, outline:"none", ...S.mono}}/>
             </div>
-            <span style={{fontSize:13,color:"#6b6862"}}>to invest</span>
           </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-          {strategies.strategies.map((s, i) => (
-            <button key={s.name} onClick={() => setActiveStrategy(i)} style={{
-              padding:"12px 14px",borderRadius:12,cursor:"pointer",textAlign:"left",
-              border: activeStrategy===i
-                ? `1.5px solid ${riskColors[s.risk_level].border}`
-                : "1px solid #e8e4dc",
-              background: activeStrategy===i
-                ? riskColors[s.risk_level].bg
-                : "#f5f3ef",
+        <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8}}>
+          {strategies.strategies.map((s,i) => (
+            <button key={s.name} onClick={()=>setActive(i)} style={{
+              padding:"10px 12px", borderRadius:10, cursor:"pointer", textAlign:"left",
+              border: active===i ? `1px solid ${riskPalette[s.risk_level].border}` : `1px solid ${C.border}`,
+              background: active===i ? riskPalette[s.risk_level].bg : C.surfaceAlt,
             }}>
-              <div style={{fontSize:18,marginBottom:4}}>{s.emoji}</div>
-              <div style={{fontSize:13,fontWeight:600,color:"#3d3a36",marginBottom:2}}>{s.name}</div>
-              <div style={{fontSize:11,color:"#9a9690"}}>{s.expected_horizon}</div>
+              <div style={{fontSize:16, marginBottom:3}}>{s.emoji}</div>
+              <div style={{fontSize:12, fontWeight:600, color:C.text, marginBottom:1}}>{s.name}</div>
+              <div style={{fontSize:10, color:C.textMuted}}>{s.expected_horizon}</div>
             </button>
           ))}
         </div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:14}}>
-        <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",
-          border:"1px solid #e8e4dc"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-            <span style={{fontSize:20}}>{strategy.emoji}</span>
+      <div style={{display:"grid", gridTemplateColumns:"1fr 300px", gap:12}}>
+        <div style={{...S.card, padding:"1.25rem 1.5rem"}}>
+          <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:14,
+            paddingBottom:12, borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontSize:18}}>{strategy.emoji}</span>
             <div>
-              <div style={{fontSize:15,fontWeight:700}}>{strategy.name} portfolio</div>
-              <div style={{fontSize:12,color:"#9a9690"}}>{strategy.tagline}</div>
+              <div style={{fontSize:14, fontWeight:700, color:C.text}}>{strategy.name} portfolio</div>
+              <div style={{fontSize:11, color:C.textMuted}}>{strategy.tagline}</div>
             </div>
           </div>
-          <div style={{fontSize:13,color:"#6b6862",lineHeight:1.6,
-            padding:"10px 0",borderBottom:"0.5px solid #e8e4dc",marginBottom:14}}>
-            {strategy.description}
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex", flexDirection:"column", gap:8}}>
             {strategy.allocations.map(a => {
-              const dollars = ((a.allocation_pct / 100) * amount).toFixed(2)
+              const dollars = ((a.allocation_pct/100)*amount).toFixed(2)
               return (
-                <div key={a.ticker} style={{background:"#f5f3ef",borderRadius:12,padding:"12px 14px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",
-                    alignItems:"center",marginBottom:6}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div key={a.ticker} style={{background:C.bg, borderRadius:10, padding:"10px 12px", border:`1px solid ${C.border}`}}>
+                  <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5}}>
+                    <div style={{display:"flex", alignItems:"center", gap:6}}>
                       <button onClick={() => onTickerClick(a.ticker)} style={{
-                        fontFamily:"monospace",fontWeight:700,fontSize:15,
-                        background:"none",border:"none",cursor:"pointer",
-                        color:"#3d3a36",padding:0,
-                        textDecoration:"underline",textDecorationColor:"#d4d0c8"
+                        ...S.mono, fontWeight:700, fontSize:13, background:"none", border:"none",
+                        cursor:"pointer", color:C.accent, padding:0
                       }}>{a.ticker}</button>
-                      <span style={{fontSize:10,padding:"2px 7px",borderRadius:8,fontWeight:500,
-                        background:a.type==="ETF"?"#ede9fe":"#dcfce7",
-                        color:a.type==="ETF"?"#5b21b6":"#166534"}}>
-                        {a.type}
-                      </span>
-                      <span style={{fontSize:11,color:"#9a9690"}}>{a.sector}</span>
+                      <Badge color={a.type==="ETF"?"purple":"green"}>{a.type}</Badge>
+                      <span style={{fontSize:10, color:C.textMuted}}>{a.sector}</span>
                     </div>
                     <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:15,fontWeight:700,color:"#3d3a36"}}>${dollars}</div>
-                      <div style={{fontSize:11,color:"#9a9690"}}>{a.allocation_pct}%</div>
+                      <div style={{fontSize:14, fontWeight:700, ...S.mono, color:C.text}}>${dollars}</div>
+                      <div style={{fontSize:10, color:C.textMuted}}>{a.allocation_pct}%</div>
                     </div>
                   </div>
-                  <div style={{background:"#e8e4dc",borderRadius:4,height:6,marginBottom:8}}>
-                    <div style={{width:`${a.allocation_pct}%`,height:6,borderRadius:4,
-                      background:a.type==="ETF"?"#7c6fcd":"#5a9e3a"}}/>
+                  <div style={{background:C.border, borderRadius:3, height:5, marginBottom:6}}>
+                    <div style={{width:`${a.allocation_pct}%`, height:5, borderRadius:3,
+                      background:a.type==="ETF"?C.purple:C.green}}/>
                   </div>
-                  <div style={{fontSize:11,color:"#6b6862",marginBottom:6,lineHeight:1.4}}>
-                    {a.rationale}
-                  </div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <span style={{fontSize:10,color:"#9a9690"}}>⏱ {a.horizon}</span>
+                  <div style={{fontSize:11, color:C.textMuted, marginBottom:5, lineHeight:1.4}}>{a.rationale}</div>
+                  <div style={{display:"flex", gap:8, alignItems:"center"}}>
+                    <span style={{fontSize:9, color:C.textDim}}>⏱ {a.horizon}</span>
                     {a.week_change_pct != null && (
-                      <span style={{fontSize:10,fontWeight:500,
-                        color:a.week_change_pct>=0?"#5a9e3a":"#d95f5f"}}>
+                      <span style={{fontSize:9, fontWeight:600, ...S.mono,
+                        color:a.week_change_pct>=0?C.green:C.red}}>
                         {a.week_change_pct>=0?"+":""}{a.week_change_pct.toFixed(1)}% this week
                       </span>
                     )}
-                    {a.earnings_date && (
-                      <span style={{fontSize:10,background:"#fff8ed",color:"#92400e",
-                        padding:"1px 6px",borderRadius:6}}>
-                        📅 {a.earnings_date}
-                      </span>
-                    )}
+                    {a.earnings_date && <Badge color="amber">📅 {a.earnings_date}</Badge>}
                   </div>
                 </div>
               )
@@ -1231,71 +1145,52 @@ function StrategiesTab({ onTickerClick }) {
           </div>
         </div>
 
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{background:rc.bg,border:`1px solid ${rc.border}`,
-            borderRadius:14,padding:"14px 16px"}}>
-            <div style={{fontSize:11,fontWeight:600,color:rc.text,marginBottom:6,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Risk level</div>
-            <div style={{display:"flex",gap:4,marginBottom:8}}>
+        <div style={{display:"flex", flexDirection:"column", gap:10}}>
+          <div style={{...S.card, background:rp.bg, borderColor:rp.border, padding:"12px 14px"}}>
+            <div style={{...S.label, color:rp.text, marginBottom:6}}>Risk level</div>
+            <div style={{display:"flex", gap:3, marginBottom:6}}>
               {[1,2,3].map(i => (
-                <div key={i} style={{flex:1,height:8,borderRadius:4,
-                  background:i<=strategy.risk_level?rc.border:"#e8e4dc"}}/>
+                <div key={i} style={{flex:1, height:6, borderRadius:3,
+                  background:i<=strategy.risk_level?rp.border:C.border}}/>
               ))}
             </div>
-            <div style={{fontSize:13,fontWeight:600,color:rc.text}}>{rc.label}</div>
+            <div style={{fontSize:12, fontWeight:600, color:rp.text}}>{rp.label}</div>
           </div>
 
-          <div style={{background:"#faf8f4",borderRadius:14,padding:"14px 16px",
-            border:"1px solid #e8e4dc"}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:12,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Allocation split</div>
-            <div style={{marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                <span style={{color:"#5a9e3a",fontWeight:500}}>Stocks</span>
-                <span style={{fontWeight:600}}>${((strategy.stock_pct/100)*amount).toFixed(2)}</span>
+          <div style={{...S.card, padding:"12px 14px"}}>
+            <div style={{...S.label, marginBottom:10}}>Allocation split</div>
+            {[{label:"Stocks",pct:strategy.stock_pct,color:C.green},{label:"ETFs",pct:strategy.etf_pct,color:C.purple}].map(a => (
+              <div key={a.label} style={{marginBottom:8}}>
+                <div style={{display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:3}}>
+                  <span style={{color:a.color, fontWeight:500}}>{a.label}</span>
+                  <span style={{fontWeight:600, ...S.mono, color:C.text}}>${((a.pct/100)*amount).toFixed(2)}</span>
+                </div>
+                <div style={{background:C.border, borderRadius:3, height:6}}>
+                  <div style={{width:`${a.pct}%`, height:6, borderRadius:3, background:a.color}}/>
+                </div>
               </div>
-              <div style={{background:"#e8e4dc",borderRadius:4,height:8}}>
-                <div style={{width:`${strategy.stock_pct}%`,height:8,borderRadius:4,background:"#5a9e3a"}}/>
-              </div>
-            </div>
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                <span style={{color:"#7c6fcd",fontWeight:500}}>ETFs</span>
-                <span style={{fontWeight:600}}>${((strategy.etf_pct/100)*amount).toFixed(2)}</span>
-              </div>
-              <div style={{background:"#e8e4dc",borderRadius:4,height:8}}>
-                <div style={{width:`${strategy.etf_pct}%`,height:8,borderRadius:4,background:"#7c6fcd"}}/>
-              </div>
-            </div>
+            ))}
           </div>
 
-          <div style={{background:"#faf8f4",borderRadius:14,padding:"14px 16px",
-            border:"1px solid #e8e4dc"}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#9a9690",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Time horizon</div>
-            <div style={{fontSize:14,fontWeight:600,color:"#3d3a36",marginBottom:4}}>
-              {strategy.expected_horizon}
-            </div>
-            <div style={{fontSize:12,color:"#9a9690"}}>
-              {strategy.risk_level === 3 && "Monitor daily — momentum can shift fast"}
-              {strategy.risk_level === 2 && "Check weekly — rebalance monthly"}
-              {strategy.risk_level === 1 && "Set and forget — review every 3 months"}
+          <div style={{...S.card, padding:"12px 14px"}}>
+            <div style={{...S.label, marginBottom:6}}>Time horizon</div>
+            <div style={{fontSize:13, fontWeight:600, color:C.text, marginBottom:3}}>{strategy.expected_horizon}</div>
+            <div style={{fontSize:11, color:C.textMuted}}>
+              {strategy.risk_level===3?"Monitor daily — momentum shifts fast":
+               strategy.risk_level===2?"Check weekly — rebalance monthly":
+               "Set and forget — review every 3 months"}
             </div>
           </div>
 
-          <div style={{background:"#fff8ed",border:"1px solid #f5d98b",
-            borderRadius:14,padding:"14px 16px"}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#92400e",marginBottom:8,
-              textTransform:"uppercase",letterSpacing:"0.07em"}}>Keep in mind</div>
+          <div style={{...S.card, background:C.amberDim, borderColor:"#9e6a03", padding:"12px 14px"}}>
+            <div style={{...S.label, color:C.amberText, marginBottom:6}}>Keep in mind</div>
             {strategy.warnings.map((w,i) => (
-              <div key={i} style={{display:"flex",gap:6,fontSize:12,
-                color:"#78350f",marginBottom:6,lineHeight:1.4}}>
+              <div key={i} style={{display:"flex", gap:6, fontSize:11, color:C.amberText, marginBottom:5, lineHeight:1.4}}>
                 <span style={{flexShrink:0}}>⚠</span>{w}
               </div>
             ))}
-            <div style={{fontSize:11,color:"#9a9690",marginTop:8,
-              paddingTop:8,borderTop:"0.5px solid #f5d98b"}}>
-              Not financial advice — based on algorithmic signals only.
+            <div style={{fontSize:10, color:C.textDim, marginTop:6, paddingTop:6, borderTop:`1px solid #9e6a03`}}>
+              Not financial advice — algorithmic signals only.
             </div>
           </div>
         </div>
@@ -1304,16 +1199,210 @@ function StrategiesTab({ onTickerClick }) {
   )
 }
 
+// ─── Macro Bar ───────────────────────────────────────────────────
+function MacroBar({ data }) {
+  const [macro, setMacro] = useState(null)
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${API}/api/fear-greed`).catch(() => null),
+      axios.get(`${API}/api/vix`).catch(() => null),
+    ]).then(([fg, vix]) => {
+      setMacro({
+        fg: fg?.data,
+        vix: vix?.data,
+      })
+    })
+  }, [])
+
+  if (!macro?.fg && !macro?.vix) return null
+
+  const fg = macro.fg
+  const vix = macro.vix
+  const fgColor = fg?.value <= 25 ? C.red : fg?.value <= 45 ? C.amber : fg?.value >= 75 ? C.green : C.textMuted
+  const vixColor = vix?.value >= 30 ? C.red : vix?.value >= 20 ? C.amber : C.green
+
+  return (
+    <div style={{
+      background: C.surfaceAlt, borderBottom:`1px solid ${C.border}`,
+      padding:"6px 2rem", display:"flex", alignItems:"center", gap:20
+    }}>
+      <span style={{fontSize:10, fontWeight:700, color:C.textDim, letterSpacing:"0.08em", textTransform:"uppercase"}}>
+        Macro
+      </span>
+      {fg && (
+        <div style={{display:"flex", alignItems:"center", gap:6}}>
+          <span style={{fontSize:10, color:C.textMuted}}>Fear & Greed</span>
+          <span style={{fontSize:12, fontWeight:700, color:fgColor}}>{fg.value}</span>
+          <span style={{fontSize:10, color:fgColor}}>{fg.description}</span>
+          <span style={{fontSize:10, color:C.textDim}}>·</span>
+          <span style={{fontSize:10, color:C.textMuted, fontStyle:"italic"}}>{fg.context?.split(".")[0]}</span>
+        </div>
+      )}
+      {vix && (
+        <div style={{display:"flex", alignItems:"center", gap:6}}>
+          <span style={{fontSize:10, color:C.textMuted}}>VIX</span>
+          <span style={{fontSize:12, fontWeight:700, color:vixColor}}>{vix.value}</span>
+          <span style={{fontSize:10, color:vixColor}}>{vix.signal}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Signal Filter Bar ───────────────────────────────────────────
+const FILTERS = [
+  { id: "congress_buy",    label: "🏛 Congress buying",   test: t => t.congress_signal && ["bullish","buy_cluster","strong_buy_cluster"].includes(t.congress_signal) },
+  { id: "congress_sell",   label: "🏛 Congress selling",  test: t => t.congress_signal && ["bearish","sell_cluster","strong_sell_cluster"].includes(t.congress_signal) },
+  { id: "analyst_upgrade", label: "📊 Analyst upgrade",   test: t => t.analyst_action && ["upgrade","strong_upgrade"].includes(t.analyst_action) },
+  { id: "bullish_sent",    label: "🧠 Bullish sentiment", test: t => (t.avg_sentiment || 0) > 0.1 },
+  { id: "bearish_sent",    label: "🧠 Bearish sentiment", test: t => (t.avg_sentiment || 0) < -0.1 },
+  { id: "high_volume",     label: "⚡ High volume",       test: t => (t.volume_spike || 1) > 2 },
+  { id: "high_short",      label: "🩳 High short interest",test: t => (t.short_float_pct || 0) > 10 },
+  { id: "unusual_options", label: "📈 Unusual options",   test: t => t.unusual_options },
+  { id: "oversold",        label: "RSI oversold",         test: t => t.rsi && t.rsi < 35 },
+  { id: "strong_signal",   label: "✓ 5+ signals",         test: t => (t.bullish_signals || 0) >= 5 },
+]
+
+const SORTS = [
+  { id: "score",    label: "Score",         fn: (a,b) => b.composite_score - a.composite_score },
+  { id: "price",    label: "Price ▲",       fn: (a,b) => b.week_change_pct - a.week_change_pct },
+  { id: "mentions", label: "Reddit buzz",   fn: (a,b) => b.mentions - a.mentions },
+  { id: "volume",   label: "Volume spike",  fn: (a,b) => (b.volume_spike||1) - (a.volume_spike||1) },
+  { id: "upside",   label: "Analyst upside",fn: (a,b) => (b.analyst_upside||0) - (a.analyst_upside||0) },
+]
+
+function FilterBar({ allScores, activeFilters, setActiveFilters, sortBy, setSortBy, onTickerClick }) {
+  const toggleFilter = (id) => {
+    setActiveFilters(prev =>
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    )
+  }
+
+  // Apply filters + sort
+  const filtered = allScores.filter(t => {
+    if (activeFilters.length === 0) return true
+    return activeFilters.every(fid => {
+      const f = FILTERS.find(f => f.id === fid)
+      return f ? f.test(t) : true
+    })
+  })
+
+  const sortFn = SORTS.find(s => s.id === sortBy)?.fn || SORTS[0].fn
+  const sorted = [...filtered].sort(sortFn)
+
+  // Count per filter
+  const counts = {}
+  FILTERS.forEach(f => {
+    counts[f.id] = allScores.filter(f.test).length
+  })
+
+  const isFiltered = activeFilters.length > 0
+
+  return (
+    <div style={{marginBottom:"1.5rem"}}>
+      {/* Filter pills */}
+      <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:10}}>
+        <span style={{...S.label, flexShrink:0}}>Filter by signal</span>
+        {activeFilters.length > 0 && (
+          <button onClick={() => setActiveFilters([])} style={{
+            fontSize:10, padding:"3px 10px", borderRadius:20, cursor:"pointer",
+            border:`1px solid ${C.red}`, background:C.redDim, color:C.redText, fontWeight:600
+          }}>✕ Clear all</button>
+        )}
+      </div>
+      <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:12}}>
+        {FILTERS.map(f => {
+          const active = activeFilters.includes(f.id)
+          const count = counts[f.id]
+          return (
+            <button key={f.id} onClick={() => toggleFilter(f.id)} style={{
+              fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer", fontWeight:500,
+              border: active ? `1px solid ${C.purple}` : `1px solid ${C.border}`,
+              background: active ? C.purpleDim : C.surfaceAlt,
+              color: active ? C.purpleText : count === 0 ? C.textDim : C.textMuted,
+              display:"flex", alignItems:"center", gap:5,
+              opacity: count === 0 ? 0.5 : 1
+            }}>
+              {f.label}
+              <span style={{
+                fontSize:9, background: active ? C.purple : C.border,
+                color: active ? "#fff" : C.textDim,
+                padding:"1px 5px", borderRadius:10, fontWeight:700, ...S.mono
+              }}>{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Sort row */}
+      <div style={{display:"flex", alignItems:"center", gap:8}}>
+        <span style={{...S.label, flexShrink:0}}>Sort by</span>
+        <div style={{display:"flex", gap:4}}>
+          {SORTS.map(s => (
+            <button key={s.id} onClick={() => setSortBy(s.id)} style={{
+              fontSize:11, padding:"4px 10px", borderRadius:7, cursor:"pointer",
+              border: sortBy===s.id ? `1px solid ${C.accent}` : `1px solid ${C.border}`,
+              background: sortBy===s.id ? C.blueDim : C.surfaceAlt,
+              color: sortBy===s.id ? C.accent : C.textMuted, fontWeight:500
+            }}>{s.label}</button>
+          ))}
+        </div>
+        {isFiltered && (
+          <span style={{fontSize:11, color:C.textMuted, marginLeft:8}}>
+            Showing <span style={{color:C.text, fontWeight:600}}>{sorted.length}</span> of {allScores.length} tickers
+          </span>
+        )}
+      </div>
+
+      {/* Filtered results grid */}
+      {isFiltered && (
+        <div style={{marginTop:16}}>
+          <div style={{fontSize:14, fontWeight:700, color:C.text, marginBottom:12}}>
+            Filtered results
+            <span style={{fontSize:11, color:C.textMuted, fontWeight:400, marginLeft:8}}>
+              {activeFilters.map(id => FILTERS.find(f=>f.id===id)?.label).join(" + ")}
+            </span>
+          </div>
+          {sorted.length === 0 ? (
+            <div style={{...S.card, padding:"2rem", textAlign:"center", color:C.textDim, fontSize:13}}>
+              No tickers match all selected filters. Try removing some filters.
+            </div>
+          ) : (
+            <div style={{display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))", gap:10}}>
+              {sorted.slice(0,20).map((t,i) => (
+                <TickerCard key={t.ticker} t={t} rank={i===0?1:0} onClick={onTickerClick}/>
+              ))}
+            </div>
+          )}
+          {sorted.length > 20 && (
+            <div style={{fontSize:11, color:C.textDim, textAlign:"center", marginTop:10}}>
+              Showing top 20 of {sorted.length} matches
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── App ─────────────────────────────────────────────────────────
 export default function App() {
   const [data, setData] = useState(null)
+  const [allScores, setAllScores] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [selectedTicker, setSelectedTicker] = useState(null)
   const [activeTab, setActiveTab] = useState("dashboard")
+  const [activeFilters, setActiveFilters] = useState([])
+  const [sortBy, setSortBy] = useState("score")
 
   const fetchData = useCallback(() => {
-    axios.get(`${API}/api/summary`).then(res => {
-      setData(res.data)
+    Promise.all([
+      axios.get(`${API}/api/summary`),
+      axios.get(`${API}/api/scores`),
+    ]).then(([summary, scores]) => {
+      setData(summary.data)
+      setAllScores(scores.data.scores || [])
       setLoading(false)
     })
   }, [])
@@ -1336,121 +1425,138 @@ export default function App() {
   }
 
   if (loading) return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",
-      background:"#faf8f4",color:"#9a9690",fontFamily:"system-ui"}}>
+    <div style={{display:"flex", alignItems:"center", justifyContent:"center", height:"100vh",
+      background:C.bg, color:C.textMuted, fontFamily:"system-ui", fontSize:14}}>
       Loading market data...
     </div>
   )
 
   return (
-    <div style={{background:"#f5f3ef",minHeight:"100vh",fontFamily:"system-ui,sans-serif",color:"#3d3a36"}}>
+    <div style={{background:C.bg, minHeight:"100vh", fontFamily:"system-ui,-apple-system,sans-serif", color:C.text}}>
       {selectedTicker && <Modal ticker={selectedTicker} data={data} onClose={handleModalClose}/>}
 
       {/* Top bar */}
-      <div style={{background:"#faf8f4",borderBottom:"1px solid #e8e4dc",padding:"0 2rem",
-        display:"flex",justifyContent:"space-between",alignItems:"center",
-        position:"sticky",top:0,zIndex:50,height:56}}>
-        <div style={{display:"flex",alignItems:"center",gap:24}}>
-          <div style={{fontSize:16,fontWeight:700,letterSpacing:"-0.5px"}}>Market Intelligence</div>
-          <div style={{display:"flex",gap:2}}>
+      <div style={{
+        background:C.surface, borderBottom:`1px solid ${C.border}`,
+        padding:"0 2rem", display:"flex", justifyContent:"space-between", alignItems:"center",
+        position:"sticky", top:0, zIndex:50, height:56
+      }}>
+        <div style={{display:"flex", alignItems:"center", gap:24}}>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            <div style={{width:28, height:28, borderRadius:7, background:`linear-gradient(135deg, ${C.purple}, ${C.blue})`,
+              display:"flex", alignItems:"center", justifyContent:"center", fontSize:13}}>📈</div>
+            <div style={{fontSize:14, fontWeight:700, color:C.text, letterSpacing:"-0.3px"}}>MarketIntel</div>
+          </div>
+          <div style={{display:"flex", gap:2}}>
             {["dashboard","history","strategies"].map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} style={{
-                fontSize:12,fontWeight:500,padding:"6px 14px",borderRadius:8,
-                border:"none",cursor:"pointer",
-                background:activeTab===tab?"#ede9fe":"transparent",
-                color:activeTab===tab?"#5b21b6":"#6b6862"
+                fontSize:12, fontWeight:500, padding:"5px 12px", borderRadius:7,
+                border:"none", cursor:"pointer",
+                background: activeTab===tab ? C.purpleDim : "transparent",
+                color: activeTab===tab ? C.purpleText : C.textMuted
               }}>{tab.charAt(0).toUpperCase()+tab.slice(1)}</button>
             ))}
           </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:11,color:"#9a9690"}}>
+        <div style={{display:"flex", alignItems:"center", gap:10}}>
+          <span style={{fontSize:11, color:C.textDim}}>
             {data.total_tickers} tickers · {new Date(data.generated_at).toLocaleString()}
           </span>
-          <span style={{fontSize:11,background:"#dcfce7",color:"#166534",
-            padding:"4px 12px",borderRadius:20,fontWeight:600}}>● Live</span>
+          <span style={{fontSize:10, background:C.greenDim, color:C.greenText,
+            padding:"3px 10px", borderRadius:20, fontWeight:700, border:`1px solid #2ea043`}}>● Live</span>
           <button onClick={handleRefresh} disabled={refreshing} style={{
-            fontSize:12,padding:"6px 14px",borderRadius:8,fontWeight:500,
-            border:"1px solid #e8e4dc",background:refreshing?"#f5f3ef":"#faf8f4",
-            color:refreshing?"#9a9690":"#3d3a36",cursor:refreshing?"not-allowed":"pointer"
+            fontSize:11, padding:"5px 12px", borderRadius:7, fontWeight:500,
+            border:`1px solid ${C.border}`, background:refreshing?C.surfaceAlt:C.surface,
+            color:refreshing?C.textDim:C.text, cursor:refreshing?"not-allowed":"pointer"
           }}>
             {refreshing?"Refreshing...":"↻ Refresh"}
           </button>
         </div>
       </div>
 
-      <div style={{maxWidth:1340,margin:"0 auto",padding:"2rem 1.5rem"}}>
+      {/* Macro bar */}
+      <MacroBar data={data}/>
+
+      <div style={{maxWidth:1360, margin:"0 auto", padding:"1.75rem 1.5rem"}}>
         {activeTab === "history" ? (
           <HistoryTab onTickerClick={handleTickerClick}/>
         ) : activeTab === "strategies" ? (
           <StrategiesTab onTickerClick={handleTickerClick}/>
         ) : (
-          <div style={{display:"grid",gridTemplateColumns:"1fr 260px",gap:20,alignItems:"start"}}>
-            {/* Main dashboard content */}
+          <div style={{display:"grid", gridTemplateColumns:"1fr 250px", gap:20, alignItems:"start"}}>
             <div>
               {/* Summary cards */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:"2rem"}}>
+              <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:"1.5rem"}}>
                 {[
-                  {label:"Top sector", value:data.top_sector, sub:`${data.top_sector_change != null ? (data.top_sector_change >= 0 ? "+" : "") + Number(data.top_sector_change).toFixed(2) + "%" : "—"} avg this week`},
+                  {label:"Top sector", value:data.top_sector,
+                    sub:`${data.top_sector_change!=null?(data.top_sector_change>=0?"+":"")+Number(data.top_sector_change).toFixed(2)+"%":"—"} avg this week`},
                   {label:"Tickers tracked", value:data.total_tickers, sub:"across all sectors"},
-                  {label:"Top stock pick", value:data.top5_stocks?.[0]?.ticker, sub:`score ${data.top5_stocks?.[0]?.composite_score}/100`},
-                  {label:"Top ETF pick", value:data.top5_etfs?.[0]?.ticker, sub:`score ${data.top5_etfs?.[0]?.composite_score}/100`},
+                  {label:"Top stock pick", value:data.top5_stocks?.[0]?.ticker,
+                    sub:`score ${data.top5_stocks?.[0]?.composite_score}/100`},
+                  {label:"Top ETF pick", value:data.top5_etfs?.[0]?.ticker,
+                    sub:`score ${data.top5_etfs?.[0]?.composite_score}/100`},
                 ].map(m => (
-                  <div key={m.label} style={{background:"#faf8f4",borderRadius:14,padding:"16px 18px",border:"1px solid #e8e4dc"}}>
-                    <div style={{fontSize:11,color:"#9a9690",marginBottom:6,fontWeight:500}}>{m.label}</div>
-                    <div style={{fontSize:22,fontWeight:700,letterSpacing:"-0.5px"}}>{m.value}</div>
-                    <div style={{fontSize:11,color:"#9a9690",marginTop:4}}>{m.sub}</div>
+                  <div key={m.label} style={{...S.card, padding:"14px 16px"}}>
+                    <div style={{...S.label, marginBottom:5}}>{m.label}</div>
+                    <div style={{fontSize:20, fontWeight:700, color:C.text, letterSpacing:"-0.5px", ...S.mono}}>{m.value}</div>
+                    <div style={{fontSize:11, color:C.textMuted, marginTop:3}}>{m.sub}</div>
                   </div>
                 ))}
               </div>
 
               {/* Sector momentum */}
-              <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",
-                border:"1px solid #e8e4dc",marginBottom:"2rem"}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:16,
-                  textTransform:"uppercase",letterSpacing:"0.08em"}}>
-                  Sector momentum this week
-                </div>
+              <div style={{...S.card, padding:"1.25rem 1.5rem", marginBottom:"1.5rem"}}>
+                <div style={{...S.label, marginBottom:14}}>Sector momentum this week</div>
                 <SectorBar sectors={data.sectors}/>
               </div>
 
-              {/* Top 5 Stocks */}
-              <div style={{marginBottom:"2rem"}}>
-                <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:14}}>
-                  <div style={{fontSize:16,fontWeight:700}}>Top 5 Stocks</div>
-                  <div style={{fontSize:12,color:"#9a9690"}}>ranked by composite score · click for full analysis</div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:12}}>
-                  {(data.top5_stocks||[]).map((t,i) => (
-                    <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
-                  ))}
-                </div>
-              </div>
+              {/* Filter + Sort system */}
+              <FilterBar
+                allScores={allScores.filter(t => !t.is_etf)}
+                activeFilters={activeFilters}
+                setActiveFilters={setActiveFilters}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                onTickerClick={handleTickerClick}
+              />
 
-              {/* Top 5 ETFs */}
-              <div style={{marginBottom:"2rem"}}>
-                <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:14}}>
-                  <div style={{fontSize:16,fontWeight:700}}>Top 5 ETFs</div>
-                  <div style={{fontSize:12,color:"#9a9690"}}>diversified exposure · click for full analysis</div>
+              {/* Top 5 Stocks — hidden when filters active */}
+              {activeFilters.length === 0 && (
+                <div style={{marginBottom:"1.5rem"}}>
+                  <div style={{display:"flex", alignItems:"baseline", gap:10, marginBottom:12}}>
+                    <div style={{fontSize:15, fontWeight:700, color:C.text}}>Top 5 Stocks</div>
+                    <div style={{fontSize:11, color:C.textMuted}}>ranked by composite score · click for full analysis</div>
+                  </div>
+                  <div style={{display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))", gap:10}}>
+                    {(data.top5_stocks||[]).map((t,i) => (
+                      <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
+                    ))}
+                  </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:12}}>
-                  {(data.top5_etfs||[]).map((t,i) => (
-                    <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
-                  ))}
+              )}
+
+              {/* Top 5 ETFs — hidden when filters active */}
+              {activeFilters.length === 0 && (
+                <div style={{marginBottom:"1.5rem"}}>
+                  <div style={{display:"flex", alignItems:"baseline", gap:10, marginBottom:12}}>
+                    <div style={{fontSize:15, fontWeight:700, color:C.text}}>Top 5 ETFs</div>
+                    <div style={{fontSize:11, color:C.textMuted}}>diversified exposure · click for full analysis</div>
+                  </div>
+                  <div style={{display:"grid", gridTemplateColumns:"repeat(5,minmax(0,1fr))", gap:10}}>
+                    {(data.top5_etfs||[]).map((t,i) => (
+                      <TickerCard key={t.ticker} t={t} rank={i+1} onClick={handleTickerClick}/>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Sector drill-down */}
-              <div style={{background:"#faf8f4",borderRadius:16,padding:"1.25rem 1.5rem",border:"1px solid #e8e4dc"}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#9a9690",marginBottom:14,
-                  textTransform:"uppercase",letterSpacing:"0.08em"}}>
-                  Sector drill-down
-                </div>
+              <div style={{...S.card, padding:"1.25rem 1.5rem"}}>
+                <div style={{...S.label, marginBottom:12}}>Sector drill-down</div>
                 <SectorDrilldown sectors={data.sectors} onTickerClick={handleTickerClick}/>
               </div>
             </div>
 
-            {/* Events sidebar */}
             <EventsSidebar/>
           </div>
         )}
