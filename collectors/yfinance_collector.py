@@ -6,7 +6,6 @@ import time
 import random
 from datetime import datetime
 
-# Small seed list — just the ones we always want regardless of news
 SEED_WATCHLIST = [
     "SPY", "QQQ",
     "NVDA", "MSFT", "AAPL",
@@ -14,7 +13,6 @@ SEED_WATCHLIST = [
 ]
 
 def load_user_watchlist():
-    """Load user-added tickers from persistent watchlist"""
     try:
         watchlist_path = "data/watchlist.json"
         if os.path.exists(watchlist_path):
@@ -45,7 +43,6 @@ def build_dynamic_watchlist(nlp_tickers=[]):
     return list(watchlist)
 
 def get_sp500_movers(top_n=20):
-    """Get top gaining and losing S&P 500 stocks this week"""
     sp500_sample = [
         "AAPL","MSFT","NVDA","AMD","GOOGL","AMZN","META","TSLA","ORCL","CRM",
         "ADBE","INTC","QCOM","TXN","AMAT","LRCX","KLAC","MRVL","AVGO","MU",
@@ -88,9 +85,6 @@ def get_earnings_alert(ticker_obj):
     return None
 
 def get_analyst_data(stock, info):
-    """
-    Get analyst price targets and recent upgrades/downgrades
-    """
     analyst_target = None
     analyst_upside = None
     analyst_rating = None
@@ -154,11 +148,6 @@ def get_analyst_data(stock, info):
     }
 
 def get_short_interest_data(info):
-    """
-    Get short interest data from yfinance info
-    short_ratio: days to cover (higher = more heavily shorted)
-    short_float_pct: % of float that is shorted
-    """
     try:
         short_ratio = info.get("shortRatio")
         short_float = info.get("shortPercentOfFloat")
@@ -197,11 +186,63 @@ def get_short_interest_data(info):
             "short_signal": "unknown"
         }
 
+def calculate_historical_metrics(prices):
+    """
+    Calculate volatility, 30-day momentum, trend direction, and beta proxy
+    from 30 days of daily close prices.
+    """
+    if not prices or len(prices) < 10:
+        return {
+            "momentum_30d": None,
+            "volatility_30d": None,
+            "trend_direction": "unknown",
+            "trend_strength": 0,
+            "beta_proxy": None,
+        }
+
+    # 30-day momentum (full period return)
+    momentum_30d = round(((prices[-1] - prices[0]) / prices[0]) * 100, 2) if prices[0] > 0 else 0
+
+    # Daily returns
+    daily_returns = []
+    for i in range(1, len(prices)):
+        if prices[i-1] > 0:
+            ret = (prices[i] - prices[i-1]) / prices[i-1]
+            daily_returns.append(ret)
+
+    # Annualized volatility (std of daily returns * sqrt(252))
+    volatility_30d = None
+    if len(daily_returns) >= 5:
+        mean_ret = sum(daily_returns) / len(daily_returns)
+        variance = sum((r - mean_ret) ** 2 for r in daily_returns) / len(daily_returns)
+        std_daily = variance ** 0.5
+        volatility_30d = round(std_daily * (252 ** 0.5) * 100, 1)  # annualized %
+
+    # Trend direction — split into first half vs second half
+    trend_direction = "choppy"
+    trend_strength = 0
+    if len(prices) >= 10:
+        mid = len(prices) // 2
+        first_half_avg = sum(prices[:mid]) / mid
+        second_half_avg = sum(prices[mid:]) / (len(prices) - mid)
+        pct_diff = (second_half_avg - first_half_avg) / first_half_avg * 100 if first_half_avg > 0 else 0
+        trend_strength = round(abs(pct_diff), 1)
+        if pct_diff > 3:
+            trend_direction = "uptrend"
+        elif pct_diff < -3:
+            trend_direction = "downtrend"
+        else:
+            trend_direction = "sideways"
+
+    return {
+        "momentum_30d": momentum_30d,
+        "volatility_30d": volatility_30d,
+        "trend_direction": trend_direction,
+        "trend_strength": trend_strength,
+        "beta_proxy": None,  # calculated in engine using SPY
+    }
+
 def fetch_ticker_data(ticker, max_retries=2):
-    """
-    Fetch ticker data with retries and backoff.
-    Returns (stock, hist, info) or (None, None, None) on failure.
-    """
     for attempt in range(max_retries):
         try:
             stock = yf.Ticker(ticker)
@@ -312,10 +353,8 @@ def get_price_data(tickers):
                     fund_score -= 10
             fund_score = max(0, min(100, fund_score))
 
-            # Analyst data
             analyst = get_analyst_data(stock, info)
 
-            # Boost/penalize fundamental score based on analyst actions
             if analyst["analyst_action"] == "strong_upgrade":
                 fund_score = min(100, fund_score + 10)
             elif analyst["analyst_action"] == "upgrade":
@@ -325,7 +364,6 @@ def get_price_data(tickers):
             elif analyst["analyst_action"] == "strong_downgrade":
                 fund_score = max(0, fund_score - 10)
 
-            # Short interest
             short_data = get_short_interest_data(info)
 
             week_hist = hist.tail(5)
@@ -344,7 +382,15 @@ def get_price_data(tickers):
             date_history = [str(d)[:10] for d in hist.index.tolist()]
             earnings_date = get_earnings_alert(stock)
 
-            # Print tags
+            # Historical metrics from 30-day price data
+            hist_metrics = calculate_historical_metrics(price_history)
+
+            # Beta from yfinance info if available
+            beta = safe("beta")
+            if beta:
+                beta = round(float(beta), 2)
+            hist_metrics["beta_proxy"] = beta  # use actual beta if available
+
             analyst_tag = ""
             if analyst["analyst_action"] in ["strong_upgrade", "upgrade"]:
                 analyst_tag = f" ⬆ {analyst['recent_upgrades']}up"
@@ -357,8 +403,10 @@ def get_price_data(tickers):
             if short_data["short_float_pct"] and short_data["short_float_pct"] > 10:
                 short_tag = f" 🩳{short_data['short_float_pct']:.1f}%"
 
+            trend_tag = f" [{hist_metrics['trend_direction']}]" if hist_metrics["trend_direction"] != "unknown" else ""
+            vol_tag = f" vol:{hist_metrics['volatility_30d']:.0f}%" if hist_metrics["volatility_30d"] else ""
             spike_tag = f" ⚡{volume_spike}x" if volume_spike > 1.5 else ""
-            print(f"  → {ticker}: {week_change_pct:+.2f}%{spike_tag}{analyst_tag}{short_tag}")
+            print(f"  → {ticker}: {week_change_pct:+.2f}%{spike_tag}{analyst_tag}{short_tag}{trend_tag}{vol_tag}")
 
             results.append({
                 "ticker": ticker,
@@ -393,6 +441,12 @@ def get_price_data(tickers):
                 "short_float_pct": short_data["short_float_pct"],
                 "short_change_mom": short_data["short_change_mom"],
                 "short_signal": short_data["short_signal"],
+                # Historical metrics
+                "momentum_30d": hist_metrics["momentum_30d"],
+                "volatility_30d": hist_metrics["volatility_30d"],
+                "trend_direction": hist_metrics["trend_direction"],
+                "trend_strength": hist_metrics["trend_strength"],
+                "beta": hist_metrics["beta_proxy"],
             })
 
         except Exception as e:

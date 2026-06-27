@@ -425,23 +425,65 @@ def get_strategies():
                 "earnings_date": p.get("earnings_date"), "market_cap": p.get("market_cap"), "pe_ratio": p.get("pe_ratio")}
 
     def momentum_score(t):
-        return (t.get("week_change_pct", 0) * 0.4 + t.get("avg_sentiment", 0) * 20 +
-                t.get("stocktwits_score", 0) * 15 + t.get("mentions", 0) * 0.5)
+        mom_30d = t.get("momentum_30d") or 0
+        week_chg = t.get("week_change_pct", 0)
+        vol_tag = t.get("volatility_tag", "unknown")
+        vol_bonus = 1.3 if vol_tag == "high" else 1.0 if vol_tag == "medium" else 0.8
+        trend = t.get("trend_direction", "unknown")
+        trend_bonus = 1.2 if trend == "uptrend" else 0.8 if trend == "downtrend" else 1.0
+        return (mom_30d * 0.4 + week_chg * 0.3 + t.get("avg_sentiment", 0) * 15 +
+                t.get("mentions", 0) * 0.3) * vol_bonus * trend_bonus
 
     def safety_score(t):
-        vol = price_map.get(t["ticker"], {}).get("volume_spike", 1.0)
+        vol_tag = t.get("volatility_tag", "unknown")
+        beta = t.get("beta") or 1.0
+        trend = t.get("trend_direction", "unknown")
+        mom_30d = t.get("momentum_30d") or 0
         chg = t.get("week_change_pct", 0)
-        pe = price_map.get(t["ticker"], {}).get("pe_ratio") or 0
-        price_penalty = 30 if chg < 0 else 0
-        return max(0, 100 - (vol * 10) - (abs(chg) * 0.5) - (max(0, pe - 30) * 0.2) - price_penalty)
+        pe = t.get("pe_ratio") or 0
+        vol_score = 30 if vol_tag == "low" else 15 if vol_tag == "medium" else 0
+        beta_score = 20 if beta < 0.8 else 10 if beta < 1.2 else 0
+        trend_score = 20 if trend == "uptrend" else 5 if trend == "sideways" else 0
+        mom_score = 15 if mom_30d > 5 else 5 if mom_30d > 0 else 0
+        pe_penalty = max(0, (pe - 30) * 0.3) if pe > 30 else 0
+        chg_penalty = 20 if chg < 0 else 0
+        return max(0, vol_score + beta_score + trend_score + mom_score - pe_penalty - chg_penalty)
+
+    def balanced_score(t):
+        trend = t.get("trend_direction", "unknown")
+        vol_tag = t.get("volatility_tag", "unknown")
+        mom_30d = t.get("momentum_30d") or 0
+        trend_bonus = 1.2 if trend == "uptrend" else 0.9 if trend == "downtrend" else 1.0
+        vol_penalty = 0.85 if vol_tag == "high" else 1.0
+        return t.get("composite_score", 0) * trend_bonus * vol_penalty + mom_30d * 0.3
+
+    def build_rationale(t, style="balanced"):
+        mom = t.get("momentum_30d")
+        vol = t.get("volatility_30d")
+        trend = t.get("trend_direction", "")
+        beta = t.get("beta")
+        parts = [f"Score {t['composite_score']}/100"]
+        if mom is not None:
+            parts.append(f"{mom:+.1f}% over 30 days")
+        if trend in ["uptrend", "downtrend", "sideways"]:
+            parts.append(f"{trend} confirmed")
+        if style == "aggressive" and vol:
+            parts.append(f"vol {vol:.0f}% annualized")
+        if style == "conservative" and beta:
+            parts.append(f"beta {beta:.1f}")
+        return " | ".join(parts)
 
     top_stocks = [enrich(s) for s in stocks[:15]]
     top_etfs = [enrich(e) for e in etfs[:8]]
     momentum_stocks = sorted(top_stocks, key=momentum_score, reverse=True)
-    safe_stocks = sorted(top_stocks, key=lambda t: t.get("composite_score", 0) * 0.4 + safety_score(t) * 0.6, reverse=True)
+    safe_stocks = sorted(top_stocks, key=safety_score, reverse=True)
+    balanced_stocks = sorted(top_stocks, key=balanced_score, reverse=True)
 
     def build_aggressive():
-        picks = [s for s in momentum_stocks if s.get("week_change_pct", 0) > 0][:3] or momentum_stocks[:3]
+        picks = [s for s in momentum_stocks
+                 if s.get("week_change_pct", 0) > 0 and (s.get("momentum_30d") or 0) > 0][:3]
+        if len(picks) < 3:
+            picks = momentum_stocks[:3]
         etf_pick = top_etfs[0] if top_etfs else None
         allocations = []
         for i, t in enumerate(picks):
@@ -449,64 +491,86 @@ def get_strategies():
             allocations.append({"ticker": t["ticker"], "type": "Stock", "sector": t["sector"],
                 "allocation_pct": pct, "composite_score": t["composite_score"],
                 "week_change_pct": t["week_change_pct"],
-                "rationale": f"Score {t['composite_score']}/100 — {'+' if t['week_change_pct'] >= 0 else ''}{t['week_change_pct']:.1f}% momentum",
-                "horizon": "Short to medium term (days–weeks)", "earnings_date": t.get("earnings_date")})
+                "momentum_30d": t.get("momentum_30d"),
+                "volatility_30d": t.get("volatility_30d"),
+                "trend_direction": t.get("trend_direction"),
+                "rationale": build_rationale(t, "aggressive"),
+                "horizon": "Days to weeks", "earnings_date": t.get("earnings_date")})
         if etf_pick:
             allocations.append({"ticker": etf_pick["ticker"], "type": "ETF", "sector": etf_pick["sector"],
                 "allocation_pct": 5, "composite_score": etf_pick["composite_score"],
                 "week_change_pct": etf_pick["week_change_pct"],
-                "rationale": "Small ETF hedge", "horizon": "Flexible", "earnings_date": None})
-        return {"name": "Aggressive", "emoji": "🔥", "tagline": "High risk, high reward — momentum-driven picks",
+                "rationale": "Small ETF hedge to reduce single-stock risk",
+                "horizon": "Flexible", "earnings_date": None})
+        return {"name": "Aggressive", "emoji": "🔥", "tagline": "High volatility + strong 30d momentum",
             "risk_level": 3, "expected_horizon": "Days to weeks", "stock_pct": 95, "etf_pct": 5,
-            "description": "Bets on the strongest momentum signals. Volatile — could move 10-20% either way quickly.",
+            "description": "Picks stocks with the strongest 30-day momentum and upward trend, weighted for volatility. These move fast both ways. Sorted by actual price history, not just last week.",
             "allocations": allocations,
             "warnings": ["High volatility — only invest what you can afford to lose",
-                "Momentum can reverse fast — set stop losses", "Check earnings dates before entering"]}
+                "Momentum can reverse fast — set stop losses",
+                "Check earnings dates before entering"]}
 
     def build_balanced():
-        picks = [s for s in top_stocks if s.get("composite_score", 0) >= 50][:2] or top_stocks[:2]
+        picks = [s for s in balanced_stocks
+                 if s.get("composite_score", 0) >= 50
+                 and s.get("trend_direction") in ["uptrend", "sideways"]][:2]
+        if len(picks) < 2:
+            picks = balanced_stocks[:2]
         etf_picks = top_etfs[:2]
         allocations = []
         for i, t in enumerate(picks):
             allocations.append({"ticker": t["ticker"], "type": "Stock", "sector": t["sector"],
                 "allocation_pct": [35, 25][i], "composite_score": t["composite_score"],
                 "week_change_pct": t["week_change_pct"],
-                "rationale": f"Strong composite score {t['composite_score']}/100 with confirmed social signal",
-                "horizon": "Medium term (1–3 months)", "earnings_date": t.get("earnings_date")})
+                "momentum_30d": t.get("momentum_30d"),
+                "trend_direction": t.get("trend_direction"),
+                "rationale": build_rationale(t, "balanced"),
+                "horizon": "1 to 3 months", "earnings_date": t.get("earnings_date")})
         for i, e in enumerate(etf_picks):
             allocations.append({"ticker": e["ticker"], "type": "ETF", "sector": e["sector"],
                 "allocation_pct": [25, 15][i], "composite_score": e["composite_score"],
                 "week_change_pct": e["week_change_pct"],
-                "rationale": "Sector ETF providing broad exposure with lower single-stock risk",
+                "rationale": "Sector ETF — broad exposure with lower single-stock risk",
                 "horizon": "Medium to long term", "earnings_date": None})
-        return {"name": "Balanced", "emoji": "⚖️", "tagline": "Mix of conviction stocks and sector ETFs",
+        return {"name": "Balanced", "emoji": "⚖️", "tagline": "Strong scores + confirmed 30d trends + sector ETFs",
             "risk_level": 2, "expected_horizon": "1 to 3 months", "stock_pct": 60, "etf_pct": 40,
-            "description": "Combines top scoring stocks with sector ETFs for diversification.",
+            "description": "Picks stocks where the 30-day trend confirms the composite score — not just last week's winners. Paired with sector ETFs for diversification.",
             "allocations": allocations,
-            "warnings": ["Still exposed to sector-wide downturns", "Rebalance monthly as scores update"]}
+            "warnings": ["Still exposed to sector-wide downturns",
+                "Rebalance monthly as scores and trends update"]}
 
     def build_conservative():
+        picks = [s for s in safe_stocks
+                 if s.get("volatility_tag") in ["low", "medium"]
+                 and s.get("trend_direction") != "downtrend"][:1]
+        if not picks:
+            picks = safe_stocks[:1]
         etf_picks = top_etfs[:3]
-        safe_pick = safe_stocks[0] if safe_stocks else None
         allocations = []
         for i, e in enumerate(etf_picks):
             allocations.append({"ticker": e["ticker"], "type": "ETF", "sector": e["sector"],
                 "allocation_pct": [40, 30, 20][i], "composite_score": e["composite_score"],
                 "week_change_pct": e["week_change_pct"],
-                "rationale": "Diversified ETF exposure — reduced single-stock risk",
+                "rationale": "Diversified ETF — broad market exposure, reduced single-stock risk",
                 "horizon": "Long term (6+ months)", "earnings_date": None})
-        if safe_pick:
-            allocations.append({"ticker": safe_pick["ticker"], "type": "Stock", "sector": safe_pick["sector"],
-                "allocation_pct": 10, "composite_score": safe_pick["composite_score"],
-                "week_change_pct": safe_pick["week_change_pct"],
-                "rationale": f"Single high-conviction stock, score {safe_pick['composite_score']}/100",
-                "horizon": "Long term", "earnings_date": safe_pick.get("earnings_date")})
-        return {"name": "Conservative", "emoji": "🛡️", "tagline": "ETF-heavy, low volatility, long term",
+        if picks:
+            t = picks[0]
+            allocations.append({"ticker": t["ticker"], "type": "Stock", "sector": t["sector"],
+                "allocation_pct": 10, "composite_score": t["composite_score"],
+                "week_change_pct": t["week_change_pct"],
+                "momentum_30d": t.get("momentum_30d"),
+                "volatility_30d": t.get("volatility_30d"),
+                "beta": t.get("beta"),
+                "trend_direction": t.get("trend_direction"),
+                "rationale": build_rationale(t, "conservative"),
+                "horizon": "Long term", "earnings_date": t.get("earnings_date")})
+        return {"name": "Conservative", "emoji": "🛡️", "tagline": "Low volatility + low beta + steady uptrend",
             "risk_level": 1, "expected_horizon": "6+ months", "stock_pct": 10, "etf_pct": 90,
-            "description": "Mostly ETFs for broad market exposure with one high-conviction stock.",
+            "description": "ETF-heavy with one low-volatility stock. The stock is filtered for low beta, low annualized volatility, and a confirmed uptrend or sideways price action over 30 days.",
             "allocations": allocations,
-            "warnings": ["Lower upside — these won't 10x", "Best held for 6+ months"]}
-
+            "warnings": ["Lower upside — designed for stability not 10x",
+                "Best held 6+ months for meaningful returns",
+                "Still subject to broad market drawdowns"]}
     return sanitize_floats({"generated_at": data["generated_at"],
         "strategies": [build_aggressive(), build_balanced(), build_conservative()]})
 
