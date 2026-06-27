@@ -132,6 +132,41 @@ def run_pipeline():
     except Exception as e:
         log(f"Events: skipped — {e}")
 
+    # Step 3f — Fear & Greed Index
+    log("Step 3f: Fetching Fear & Greed Index...")
+    try:
+        from collectors.feargreed_collector import get_fear_greed, save_fear_greed
+        fg_data = get_fear_greed()
+        save_fear_greed(fg_data)
+        log(f"Fear & Greed: {fg_data.get('value')} ({fg_data.get('description')}) — {fg_data.get('signal')}")
+    except Exception as e:
+        log(f"Fear & Greed: skipped — {e}")
+
+    # Step 3g — VIX
+    log("Step 3g: Fetching VIX...")
+    try:
+        from collectors.vix_collector import get_vix, save_vix
+        vix_data = get_vix()
+        save_vix(vix_data)
+        log(f"VIX: {vix_data.get('value')} ({vix_data.get('signal')})")
+    except Exception as e:
+        log(f"VIX: skipped — {e}")
+
+    # Step 3h — Congressional trades
+    log("Step 3h: Fetching congressional trades...")
+    try:
+        from collectors.congress_collector import get_congress_trades, save_congress_data
+        congress_data = get_congress_trades(days_back=60, max_pages=15)
+        if congress_data:
+            save_congress_data(congress_data)
+            signals = sum(1 for d in congress_data.values() if d["signal"] != "neutral")
+            log(f"Congress: {len(congress_data)} tickers tracked, {signals} active signals")
+        else:
+            log("Congress: no data available")
+    except Exception as e:
+        log(f"Congress: skipped — {e}")
+        congress_data = {}
+
     # Step 4 — Prices with dynamic watchlist
     log("Step 4: Fetching prices for dynamic watchlist...")
     prices = get_price_data(dynamic_watchlist)
@@ -154,12 +189,8 @@ def run_pipeline():
             try:
                 with open(filepath) as f:
                     data = json.load(f)
-                    # Only extend if it's a list of dicts (posts/articles)
-                    # Skip insider/institutional which are dicts of dicts
                     if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
                         all_posts.extend(data)
-                    elif isinstance(data, list) and len(data) == 0:
-                        pass  # empty list, skip
             except Exception as e:
                 print(f"  Skipping {filename}: {e}")
 
@@ -175,7 +206,7 @@ def run_pipeline():
     with open(sentiment_file, "w") as f:
         json.dump(sentiment, f, indent=2)
 
-# Load insider and institutional data
+    # Load insider and institutional data
     insider_data = {}
     inst_data = {}
     insider_files = sorted([f for f in os.listdir("data/raw") if f.startswith("insider_")])
@@ -186,6 +217,28 @@ def run_pipeline():
     if inst_files:
         with open(f"data/raw/{inst_files[-1]}") as f:
             inst_data = json.load(f)
+
+    # Load congress data
+    congress_data = {}
+    try:
+        if os.path.exists("data/processed/congress_trades.json"):
+            with open("data/processed/congress_trades.json") as f:
+                raw = json.load(f)
+                congress_data = raw.get("tickers", {})
+    except Exception as e:
+        log(f"Congress data load failed: {e}")
+
+    # Load Fear & Greed + VIX for macro context
+    macro_data = {}
+    try:
+        if os.path.exists("data/processed/fear_greed.json"):
+            with open("data/processed/fear_greed.json") as f:
+                macro_data["fear_greed"] = json.load(f)
+        if os.path.exists("data/processed/vix.json"):
+            with open("data/processed/vix.json") as f:
+                macro_data["vix"] = json.load(f)
+    except Exception as e:
+        log(f"Macro data load failed: {e}")
 
     scores = compute_scores(prices, sentiment, stocktwits_data,
                            insider_data=insider_data,
@@ -198,13 +251,17 @@ def run_pipeline():
             "generated_at": datetime.utcnow().isoformat(),
             "scores": scores,
             "sectors": sectors,
-            "earnings_alerts": earnings_soon
+            "earnings_alerts": earnings_soon,
+            "macro": macro_data,
+            "congress_signals": len([d for d in congress_data.values() if d.get("signal") != "neutral"])
         }, f, indent=2, default=str)
 
     print("=" * 55)
     log("Pipeline complete!")
-    log(f"Top pick: {scores[0]['ticker']} — score {scores[0]['composite_score']}/100")
-    log(f"Top sector: {sectors[0]['sector']} — {sectors[0]['avg_change']:+.2f}%")
+    if scores:
+        log(f"Top pick: {scores[0]['ticker']} — score {scores[0]['composite_score']}/100")
+    if sectors:
+        log(f"Top sector: {sectors[0]['sector']} — {sectors[0].get('avg_change', 0):+.2f}%")
     print("=" * 55)
 
     # Save daily history snapshot
@@ -218,15 +275,10 @@ def run_pipeline():
 
     return scores, sectors
 
-    # Save daily history snapshot
-    from scoring.history import save_daily_snapshot
-    save_daily_snapshot(scores, sentiment)
-    log("History snapshot saved")
-
 def start_scheduler():
     scheduler = BlockingScheduler()
-    scheduler.add_job(run_pipeline, 'cron', hour=7, minute=0)
-    log("Scheduler started — pipeline runs daily at 7:00 AM")
+    scheduler.add_job(run_pipeline, 'cron', hour=6, minute=0)
+    log("Scheduler started — pipeline runs daily at 6:00 AM")
     log("Press Ctrl+C to stop")
     try:
         scheduler.start()

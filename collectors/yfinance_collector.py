@@ -87,6 +87,116 @@ def get_earnings_alert(ticker_obj):
         pass
     return None
 
+def get_analyst_data(stock, info):
+    """
+    Get analyst price targets and recent upgrades/downgrades
+    """
+    analyst_target = None
+    analyst_upside = None
+    analyst_rating = None
+    recent_upgrades = 0
+    recent_downgrades = 0
+    analyst_action = "neutral"
+
+    try:
+        target = info.get("targetMeanPrice")
+        current = info.get("currentPrice") or info.get("regularMarketPrice")
+        if target and current and current > 0:
+            analyst_target = round(float(target), 2)
+            analyst_upside = round(((analyst_target - current) / current) * 100, 2)
+
+        rec = info.get("recommendationKey", "")
+        if rec in ["strong_buy", "buy"]:
+            analyst_rating = "buy"
+        elif rec in ["hold", "neutral"]:
+            analyst_rating = "hold"
+        elif rec in ["sell", "strong_sell"]:
+            analyst_rating = "sell"
+
+        try:
+            upgrades = stock.upgrades_downgrades
+            if upgrades is not None and not upgrades.empty:
+                recent = upgrades.head(10)
+                for _, row in recent.iterrows():
+                    action = str(row.get("Action", "")).lower()
+                    if action in ["up", "upgrade", "initiated", "reiterated"]:
+                        grade = str(row.get("ToGrade", "")).lower()
+                        if any(g in grade for g in ["buy", "outperform", "overweight", "strong buy"]):
+                            recent_upgrades += 1
+                        elif any(g in grade for g in ["sell", "underperform", "underweight"]):
+                            recent_downgrades += 1
+                    elif action in ["down", "downgrade"]:
+                        recent_downgrades += 1
+        except:
+            pass
+
+        if recent_upgrades >= 2 and recent_downgrades == 0:
+            analyst_action = "strong_upgrade"
+        elif recent_upgrades > recent_downgrades:
+            analyst_action = "upgrade"
+        elif recent_downgrades > recent_upgrades:
+            analyst_action = "downgrade"
+        elif recent_downgrades >= 2:
+            analyst_action = "strong_downgrade"
+        else:
+            analyst_action = "neutral"
+
+    except Exception:
+        pass
+
+    return {
+        "analyst_target": analyst_target,
+        "analyst_upside": analyst_upside,
+        "analyst_rating": analyst_rating,
+        "recent_upgrades": recent_upgrades,
+        "recent_downgrades": recent_downgrades,
+        "analyst_action": analyst_action
+    }
+
+def get_short_interest_data(info):
+    """
+    Get short interest data from yfinance info
+    short_ratio: days to cover (higher = more heavily shorted)
+    short_float_pct: % of float that is shorted
+    """
+    try:
+        short_ratio = info.get("shortRatio")
+        short_float = info.get("shortPercentOfFloat")
+        shares_short = info.get("sharesShort")
+        shares_short_prior = info.get("sharesShortPriorMonth")
+
+        if short_ratio:
+            short_ratio = round(float(short_ratio), 2)
+        if short_float:
+            short_float = round(float(short_float) * 100, 2)
+
+        short_change = None
+        if shares_short and shares_short_prior and shares_short_prior > 0:
+            short_change = round(((shares_short - shares_short_prior) / shares_short_prior) * 100, 2)
+
+        if short_float and short_float > 20:
+            short_signal = "heavily_shorted"
+        elif short_float and short_float > 10:
+            short_signal = "elevated"
+        elif short_float and short_float > 5:
+            short_signal = "moderate"
+        else:
+            short_signal = "low"
+
+        return {
+            "short_ratio": short_ratio,
+            "short_float_pct": short_float,
+            "short_change_mom": short_change,
+            "short_signal": short_signal
+        }
+    except:
+        return {
+            "short_ratio": None,
+            "short_float_pct": None,
+            "short_change_mom": None,
+            "short_signal": "unknown"
+        }
+
 def fetch_ticker_data(ticker, max_retries=2):
     """
     Fetch ticker data with retries and backoff.
@@ -118,11 +228,8 @@ def get_price_data(tickers):
     results = []
 
     for i, ticker in enumerate(tickers):
-        # Polite delay between requests — prevents Yahoo Finance rate limiting
         if i > 0:
             time.sleep(random.uniform(0.8, 1.5))
-
-        # Extra cooldown every 20 tickers
         if i > 0 and i % 20 == 0:
             cooldown = random.uniform(3, 6)
             print(f"  [Cooldown {cooldown:.1f}s after {i} tickers...]")
@@ -135,7 +242,6 @@ def get_price_data(tickers):
                 print(f"  → {ticker}: skipped (no data)")
                 continue
 
-            # --- Fundamentals ---
             def safe(key, default=None):
                 val = info.get(key)
                 return val if val not in [None, "N/A", float("inf")] else default
@@ -152,7 +258,6 @@ def get_price_data(tickers):
             if debt_equity:
                 debt_equity = round(debt_equity / 100, 2)
 
-            # Earnings surprise
             earnings_surprise = None
             try:
                 earnings_hist = stock.earnings_history
@@ -185,7 +290,6 @@ def get_price_data(tickers):
             if pe_ratio:
                 pe_ratio = round(float(pe_ratio), 2)
 
-            # Fundamental score 0-100
             fund_score = 50
             if revenue_growth is not None:
                 if revenue_growth > 15:
@@ -208,7 +312,22 @@ def get_price_data(tickers):
                     fund_score -= 10
             fund_score = max(0, min(100, fund_score))
 
-            # Price calculations
+            # Analyst data
+            analyst = get_analyst_data(stock, info)
+
+            # Boost/penalize fundamental score based on analyst actions
+            if analyst["analyst_action"] == "strong_upgrade":
+                fund_score = min(100, fund_score + 10)
+            elif analyst["analyst_action"] == "upgrade":
+                fund_score = min(100, fund_score + 5)
+            elif analyst["analyst_action"] == "downgrade":
+                fund_score = max(0, fund_score - 5)
+            elif analyst["analyst_action"] == "strong_downgrade":
+                fund_score = max(0, fund_score - 10)
+
+            # Short interest
+            short_data = get_short_interest_data(info)
+
             week_hist = hist.tail(5)
             week_open = float(week_hist["Close"].iloc[0])
             latest_close = float(week_hist["Close"].iloc[-1])
@@ -224,6 +343,22 @@ def get_price_data(tickers):
             price_history = [round(float(x), 2) for x in hist["Close"].tolist()]
             date_history = [str(d)[:10] for d in hist.index.tolist()]
             earnings_date = get_earnings_alert(stock)
+
+            # Print tags
+            analyst_tag = ""
+            if analyst["analyst_action"] in ["strong_upgrade", "upgrade"]:
+                analyst_tag = f" ⬆ {analyst['recent_upgrades']}up"
+            elif analyst["analyst_action"] in ["strong_downgrade", "downgrade"]:
+                analyst_tag = f" ⬇ {analyst['recent_downgrades']}dn"
+            if analyst["analyst_upside"] is not None:
+                analyst_tag += f" tgt:{analyst['analyst_upside']:+.1f}%"
+
+            short_tag = ""
+            if short_data["short_float_pct"] and short_data["short_float_pct"] > 10:
+                short_tag = f" 🩳{short_data['short_float_pct']:.1f}%"
+
+            spike_tag = f" ⚡{volume_spike}x" if volume_spike > 1.5 else ""
+            print(f"  → {ticker}: {week_change_pct:+.2f}%{spike_tag}{analyst_tag}{short_tag}")
 
             results.append({
                 "ticker": ticker,
@@ -247,11 +382,18 @@ def get_price_data(tickers):
                 "profit_margin": profit_margin,
                 "debt_equity": debt_equity,
                 "earnings_surprise": earnings_surprise,
-                "fundamental_score": fund_score
+                "fundamental_score": fund_score,
+                "analyst_target": analyst["analyst_target"],
+                "analyst_upside": analyst["analyst_upside"],
+                "analyst_rating": analyst["analyst_rating"],
+                "analyst_action": analyst["analyst_action"],
+                "recent_upgrades": analyst["recent_upgrades"],
+                "recent_downgrades": analyst["recent_downgrades"],
+                "short_ratio": short_data["short_ratio"],
+                "short_float_pct": short_data["short_float_pct"],
+                "short_change_mom": short_data["short_change_mom"],
+                "short_signal": short_data["short_signal"],
             })
-
-            spike_tag = f" ⚡ vol {volume_spike}x" if volume_spike > 1.5 else ""
-            print(f"  → {ticker}: {week_change_pct:+.2f}%{spike_tag}")
 
         except Exception as e:
             print(f"  → {ticker}: failed — {e}")
