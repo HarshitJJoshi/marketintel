@@ -13,20 +13,14 @@ def cleanup_old_files():
     proc_dir = "data/processed"
 
     for prefix in ["reddit_", "rss_", "prices_", "stocktwits_", "podcasts_", "insider_", "institutional_"]:
-        files = sorted([
-            f for f in os.listdir(raw_dir)
-            if f.startswith(prefix) and f.endswith(".json")
-        ])
+        files = sorted([f for f in os.listdir(raw_dir) if f.startswith(prefix) and f.endswith(".json")])
         if len(files) > 1:
             for old_file in files[:-1]:
                 os.remove(f"{raw_dir}/{old_file}")
             log(f"Cleaned {len(files)-1} old {prefix[:-1]} files")
 
     for prefix in ["sentiment_", "scores_"]:
-        files = sorted([
-            f for f in os.listdir(proc_dir)
-            if f.startswith(prefix) and f.endswith(".json")
-        ])
+        files = sorted([f for f in os.listdir(proc_dir) if f.startswith(prefix) and f.endswith(".json")])
         if len(files) > 1:
             for old_file in files[:-1]:
                 os.remove(f"{proc_dir}/{old_file}")
@@ -134,16 +128,18 @@ def run_pipeline():
 
     # Step 3f — Fear & Greed Index
     log("Step 3f: Fetching Fear & Greed Index...")
+    fear_greed = None
     try:
         from collectors.feargreed_collector import get_fear_greed, save_fear_greed
-        fg_data = get_fear_greed()
-        save_fear_greed(fg_data)
-        log(f"Fear & Greed: {fg_data.get('value')} ({fg_data.get('description')}) — {fg_data.get('signal')}")
+        fear_greed = get_fear_greed()
+        save_fear_greed(fear_greed)
+        log(f"Fear & Greed: {fear_greed.get('value')} ({fear_greed.get('description')})")
     except Exception as e:
         log(f"Fear & Greed: skipped — {e}")
 
     # Step 3g — VIX
     log("Step 3g: Fetching VIX...")
+    vix_data = None
     try:
         from collectors.vix_collector import get_vix, save_vix
         vix_data = get_vix()
@@ -154,6 +150,7 @@ def run_pipeline():
 
     # Step 3h — Congressional trades
     log("Step 3h: Fetching congressional trades...")
+    congress_data = {}
     try:
         from collectors.congress_collector import get_congress_trades, save_congress_data
         congress_data = get_congress_trades(days_back=60, max_pages=15)
@@ -165,9 +162,8 @@ def run_pipeline():
             log("Congress: no data available")
     except Exception as e:
         log(f"Congress: skipped — {e}")
-        congress_data = {}
 
-    # Step 4 — Prices with dynamic watchlist
+    # Step 4 — Prices
     log("Step 4: Fetching prices for dynamic watchlist...")
     prices = get_price_data(dynamic_watchlist)
     save_price_data(prices)
@@ -197,7 +193,6 @@ def run_pipeline():
     all_tagged = extract_tickers_from_posts(all_posts)
     analyzed = analyze_posts(all_tagged)
     sentiment = aggregate_by_ticker(analyzed)
-
     stocktwits_data = aggregate_stocktwits_sentiment(all_posts)
     log(f"StockTwits sentiment: {len(stocktwits_data)} tickers")
 
@@ -218,28 +213,6 @@ def run_pipeline():
         with open(f"data/raw/{inst_files[-1]}") as f:
             inst_data = json.load(f)
 
-    # Load congress data
-    congress_data = {}
-    try:
-        if os.path.exists("data/processed/congress_trades.json"):
-            with open("data/processed/congress_trades.json") as f:
-                raw = json.load(f)
-                congress_data = raw.get("tickers", {})
-    except Exception as e:
-        log(f"Congress data load failed: {e}")
-
-    # Load Fear & Greed + VIX for macro context
-    macro_data = {}
-    try:
-        if os.path.exists("data/processed/fear_greed.json"):
-            with open("data/processed/fear_greed.json") as f:
-                macro_data["fear_greed"] = json.load(f)
-        if os.path.exists("data/processed/vix.json"):
-            with open("data/processed/vix.json") as f:
-                macro_data["vix"] = json.load(f)
-    except Exception as e:
-        log(f"Macro data load failed: {e}")
-
     scores = compute_scores(prices, sentiment, stocktwits_data,
                            insider_data=insider_data,
                            institutional_data=inst_data)
@@ -252,7 +225,6 @@ def run_pipeline():
             "scores": scores,
             "sectors": sectors,
             "earnings_alerts": earnings_soon,
-            "macro": macro_data,
             "congress_signals": len([d for d in congress_data.values() if d.get("signal") != "neutral"])
         }, f, indent=2, default=str)
 
@@ -272,6 +244,15 @@ def run_pipeline():
         log("History snapshot saved")
     except Exception as e:
         log(f"History snapshot failed: {e}")
+
+    # Save to Supabase automatically
+    log("Saving to Supabase...")
+    try:
+        import db
+        db.save_all(scores, prices, congress_data, fear_greed, vix_data)
+        log("Supabase save complete")
+    except Exception as e:
+        log(f"Supabase save failed (non-critical): {e}")
 
     return scores, sectors
 
