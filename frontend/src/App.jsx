@@ -221,10 +221,10 @@ function SentimentChart({ history, width = 500 }) {
 }
 
 // ─── Modal ───────────────────────────────────────────────────────
-function Modal({ ticker, data, onClose }) {
+function Modal({ ticker, data, allScores, onClose }) {
   const [detail, setDetail] = useState(null)
   const [history, setHistory] = useState(null)
-  const t = [...(data.top5_stocks||[]), ...(data.top5_etfs||[])].find(x => x.ticker === ticker)
+  const t = allScores?.find(x => x.ticker === ticker) || [...(data.top5_stocks||[]), ...(data.top5_etfs||[])].find(x => x.ticker === ticker)
 
   useEffect(() => {
     setDetail(null); setHistory(null)
@@ -1433,7 +1433,7 @@ export default function App() {
 
   return (
     <div style={{background:C.bg, minHeight:"100vh", fontFamily:"system-ui,-apple-system,sans-serif", color:C.text}}>
-      {selectedTicker && <Modal ticker={selectedTicker} data={data} onClose={handleModalClose}/>}
+      {selectedTicker && <Modal ticker={selectedTicker} data={data} allScores={allScores} onClose={handleModalClose}/>}
 
       {/* Top bar */}
       <div style={{
