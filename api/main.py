@@ -50,15 +50,13 @@ def get_latest_scores_from_supabase():
         return []
 
 def get_latest_price_map_from_supabase():
-    """Load latest price data from Supabase"""
+    """Load most recent price row per ticker — not filtered by today"""
     try:
-        today = str(date.today())
-        result = sb.table("price_data").select("*").eq("date", today).execute()
-        if not result.data:
-            result = sb.table("price_data").select("*").order("date", desc=True).limit(200).execute()
+        result = sb.table("price_data").select("*").order("date", desc=True).limit(300).execute()
         price_map = {}
         for p in (result.data or []):
-            price_map[p["ticker"]] = p
+            if p["ticker"] not in price_map:
+                price_map[p["ticker"]] = p
         return price_map
     except Exception as e:
         print(f"Supabase price fetch failed: {e}")

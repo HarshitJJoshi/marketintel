@@ -14,9 +14,8 @@ SEED_WATCHLIST = [
 
 def load_user_watchlist():
     try:
-        watchlist_path = "data/watchlist.json"
-        if os.path.exists(watchlist_path):
-            with open(watchlist_path) as f:
+        if os.path.exists("data/watchlist.json"):
+            with open("data/watchlist.json") as f:
                 data = json.load(f)
                 tickers = data.get("tickers", [])
                 if tickers:
@@ -28,8 +27,7 @@ def load_user_watchlist():
 
 def build_dynamic_watchlist(nlp_tickers=[]):
     watchlist = set(SEED_WATCHLIST)
-    user_tickers = load_user_watchlist()
-    watchlist.update(user_tickers)
+    watchlist.update(load_user_watchlist())
     for t in nlp_tickers:
         if len(t) <= 5 and t.isalpha():
             watchlist.add(t.upper())
@@ -59,9 +57,11 @@ def get_sp500_movers(top_n=20):
     for ticker in sp500_sample:
         try:
             hist = yf.Ticker(ticker).history(period="5d", timeout=10)
-            if len(hist) >= 2:
-                chg = ((hist["Close"].iloc[-1] - hist["Close"].iloc[0]) / hist["Close"].iloc[0]) * 100
-                results.append((ticker, chg))
+            closes = hist["Close"].dropna() if not hist.empty else None
+            if closes is not None and len(closes) >= 2:
+                chg = ((float(closes.iloc[-1]) - float(closes.iloc[0])) / float(closes.iloc[0])) * 100
+                if not math.isnan(chg) and not math.isinf(chg):
+                    results.append((ticker, chg))
             time.sleep(0.3)
         except:
             pass
@@ -73,9 +73,8 @@ def get_earnings_alert(ticker_obj):
         cal = ticker_obj.calendar
         if cal is None:
             return None
-        if hasattr(cal, 'columns'):
-            if 'Earnings Date' in cal.columns:
-                return str(cal['Earnings Date'].iloc[0])[:10]
+        if hasattr(cal, 'columns') and 'Earnings Date' in cal.columns:
+            return str(cal['Earnings Date'].iloc[0])[:10]
         if isinstance(cal, dict) and 'Earnings Date' in cal:
             dates = cal['Earnings Date']
             if dates:
@@ -110,8 +109,7 @@ def get_analyst_data(stock, info):
         try:
             upgrades = stock.upgrades_downgrades
             if upgrades is not None and not upgrades.empty:
-                recent = upgrades.head(10)
-                for _, row in recent.iterrows():
+                for _, row in upgrades.head(10).iterrows():
                     action = str(row.get("Action", "")).lower()
                     if action in ["up", "upgrade", "initiated", "reiterated"]:
                         grade = str(row.get("ToGrade", "")).lower()
@@ -132,8 +130,6 @@ def get_analyst_data(stock, info):
             analyst_action = "downgrade"
         elif recent_downgrades >= 2:
             analyst_action = "strong_downgrade"
-        else:
-            analyst_action = "neutral"
 
     except Exception:
         pass
@@ -179,67 +175,57 @@ def get_short_interest_data(info):
             "short_signal": short_signal
         }
     except:
-        return {
-            "short_ratio": None,
-            "short_float_pct": None,
-            "short_change_mom": None,
-            "short_signal": "unknown"
-        }
+        return {"short_ratio": None, "short_float_pct": None,
+                "short_change_mom": None, "short_signal": "unknown"}
 
 def calculate_historical_metrics(prices):
     """
-    Calculate volatility, 30-day momentum, trend direction, and beta proxy
-    from 30 days of daily close prices.
+    Calculate 30-day momentum, annualized volatility, and trend direction.
+    Expects a clean list of floats with no NaN values.
     """
     if not prices or len(prices) < 10:
-        return {
-            "momentum_30d": None,
-            "volatility_30d": None,
-            "trend_direction": "unknown",
-            "trend_strength": 0,
-            "beta_proxy": None,
-        }
+        return {"momentum_30d": None, "volatility_30d": None,
+                "trend_direction": "unknown", "trend_strength": 0, "beta_proxy": None}
 
-    # 30-day momentum (full period return)
-    momentum_30d = round(((prices[-1] - prices[0]) / prices[0]) * 100, 2) if prices[0] > 0 else 0
+    first = prices[0]
+    last = prices[-1]
 
-    # Daily returns
+    momentum_30d = round(((last - first) / first) * 100, 2) if first > 0 else 0
+
     daily_returns = []
     for i in range(1, len(prices)):
         if prices[i-1] > 0:
-            ret = (prices[i] - prices[i-1]) / prices[i-1]
-            daily_returns.append(ret)
+            daily_returns.append((prices[i] - prices[i-1]) / prices[i-1])
 
-    # Annualized volatility (std of daily returns * sqrt(252))
     volatility_30d = None
     if len(daily_returns) >= 5:
         mean_ret = sum(daily_returns) / len(daily_returns)
         variance = sum((r - mean_ret) ** 2 for r in daily_returns) / len(daily_returns)
         std_daily = variance ** 0.5
-        volatility_30d = round(std_daily * (252 ** 0.5) * 100, 1)  # annualized %
+        vol = round(std_daily * (252 ** 0.5) * 100, 1)
+        # Sanity check — ignore clearly wrong values
+        volatility_30d = vol if 0 < vol < 500 else None
 
-    # Trend direction — split into first half vs second half
-    trend_direction = "choppy"
+    trend_direction = "sideways"
     trend_strength = 0
     if len(prices) >= 10:
         mid = len(prices) // 2
         first_half_avg = sum(prices[:mid]) / mid
         second_half_avg = sum(prices[mid:]) / (len(prices) - mid)
-        pct_diff = (second_half_avg - first_half_avg) / first_half_avg * 100 if first_half_avg > 0 else 0
-        trend_strength = round(abs(pct_diff), 1)
-        if pct_diff > 3:
-            trend_direction = "uptrend"
-        elif pct_diff < -3:
-            trend_direction = "downtrend"
-        else:
-            trend_direction = "sideways"
+        if first_half_avg > 0:
+            pct_diff = (second_half_avg - first_half_avg) / first_half_avg * 100
+            trend_strength = round(abs(pct_diff), 1)
+            if pct_diff > 3:
+                trend_direction = "uptrend"
+            elif pct_diff < -3:
+                trend_direction = "downtrend"
 
     return {
         "momentum_30d": momentum_30d,
         "volatility_30d": volatility_30d,
         "trend_direction": trend_direction,
         "trend_strength": trend_strength,
-        "beta_proxy": None,  # calculated in engine using SPY
+        "beta_proxy": None,
     }
 
 def fetch_ticker_data(ticker, max_retries=2):
@@ -278,134 +264,127 @@ def get_price_data(tickers):
 
         try:
             stock, hist, info = fetch_ticker_data(ticker)
-
             if stock is None or hist is None:
                 print(f"  → {ticker}: skipped (no data)")
                 continue
+
+            # ── Drop NaN closes — fixes intraday incomplete candles ──
+            valid_closes = hist["Close"].dropna()
+            if len(valid_closes) < 5:
+                print(f"  → {ticker}: skipped (insufficient valid closes: {len(valid_closes)})")
+                continue
+
+            latest_close = float(valid_closes.iloc[-1])
+            if math.isnan(latest_close) or math.isinf(latest_close) or latest_close <= 0:
+                print(f"  → {ticker}: skipped (invalid close price)")
+                continue
+
+            # Week change using last 5 valid closes
+            week_closes = valid_closes.tail(5)
+            week_open = float(week_closes.iloc[0])
+            week_change_pct = ((latest_close - week_open) / week_open) * 100 if week_open > 0 else 0.0
+            if math.isnan(week_change_pct) or math.isinf(week_change_pct):
+                week_change_pct = 0.0
+
+            # Clean price history — no NaN, no zero, no inf
+            price_history = [
+                round(float(x), 2) for x in valid_closes.tolist()
+                if not math.isnan(float(x)) and not math.isinf(float(x)) and float(x) > 0
+            ]
+            date_history = [str(d)[:10] for d in hist.index.tolist()]
+
+            # Volume — safe fallback
+            valid_volumes = hist["Volume"].dropna()
+            avg_vol = float(valid_volumes.mean()) if not valid_volumes.empty else 0
+            latest_vol = float(valid_volumes.iloc[-1]) if not valid_volumes.empty else 0
+            volume_spike = round(latest_vol / avg_vol, 2) if avg_vol > 0 else 1.0
+            if math.isnan(volume_spike) or math.isinf(volume_spike):
+                volume_spike = 1.0
+
+            # Week high/low from valid data
+            valid_hist = hist.dropna(subset=["High", "Low"])
+            week_valid = valid_hist.tail(5)
+            week_high = round(float(week_valid["High"].max()), 2) if not week_valid.empty else latest_close
+            week_low = round(float(week_valid["Low"].min()), 2) if not week_valid.empty else latest_close
 
             def safe(key, default=None):
                 val = info.get(key)
                 return val if val not in [None, "N/A", float("inf")] else default
 
             revenue_growth = safe("revenueGrowth")
-            if revenue_growth:
+            if revenue_growth is not None:
                 revenue_growth = round(revenue_growth * 100, 2)
 
             profit_margin = safe("profitMargins")
-            if profit_margin:
+            if profit_margin is not None:
                 profit_margin = round(profit_margin * 100, 2)
 
             debt_equity = safe("debtToEquity")
-            if debt_equity:
+            if debt_equity is not None:
                 debt_equity = round(debt_equity / 100, 2)
+
+            pe_ratio = safe("trailingPE")
+            if pe_ratio is not None:
+                pe_ratio = round(float(pe_ratio), 2)
 
             earnings_surprise = None
             try:
                 earnings_hist = stock.earnings_history
                 if earnings_hist is not None and not earnings_hist.empty:
-                    cols = earnings_hist.columns.tolist()
-                    surprise_col = None
                     for col in ["surprisePercent", "Surprise(%)", "epsActual"]:
-                        if col in cols:
-                            surprise_col = col
+                        if col in earnings_hist.columns:
+                            surprises = earnings_hist[col].dropna().tolist()
+                            beats = sum(1 for s in surprises[-4:] if s > 0)
+                            earnings_surprise = f"{beats}/4 beats"
                             break
-                    if surprise_col:
-                        surprises = earnings_hist[surprise_col].dropna().tolist()
-                        beats = sum(1 for s in surprises[-4:] if s > 0)
-                        earnings_surprise = f"{beats}/4 beats"
             except:
                 pass
 
             if not earnings_surprise:
                 try:
-                    info_eps = info.get("epsTrailingTwelveMonths")
-                    info_fwd = info.get("epsForward")
-                    if info_eps and info_fwd and info_fwd > info_eps:
-                        earnings_surprise = "EPS growing"
-                    elif info_eps and info_fwd:
-                        earnings_surprise = "EPS flat/declining"
+                    eps = info.get("epsTrailingTwelveMonths")
+                    fwd = info.get("epsForward")
+                    if eps and fwd:
+                        earnings_surprise = "EPS growing" if fwd > eps else "EPS flat/declining"
                 except:
                     pass
 
-            pe_ratio = safe("trailingPE")
-            if pe_ratio:
-                pe_ratio = round(float(pe_ratio), 2)
-
+            # Fundamental score
             fund_score = 50
             if revenue_growth is not None:
-                if revenue_growth > 15:
-                    fund_score += 20
-                elif revenue_growth > 5:
-                    fund_score += 10
-                elif revenue_growth < 0:
-                    fund_score -= 20
+                fund_score += 20 if revenue_growth > 15 else 10 if revenue_growth > 5 else -20 if revenue_growth < 0 else 0
             if profit_margin is not None:
-                if profit_margin > 20:
-                    fund_score += 15
-                elif profit_margin > 10:
-                    fund_score += 8
-                elif profit_margin < 0:
-                    fund_score -= 15
+                fund_score += 15 if profit_margin > 20 else 8 if profit_margin > 10 else -15 if profit_margin < 0 else 0
             if debt_equity is not None:
-                if debt_equity < 1:
-                    fund_score += 10
-                elif debt_equity > 2:
-                    fund_score -= 10
+                fund_score += 10 if debt_equity < 1 else -10 if debt_equity > 2 else 0
             fund_score = max(0, min(100, fund_score))
 
             analyst = get_analyst_data(stock, info)
-
-            if analyst["analyst_action"] == "strong_upgrade":
-                fund_score = min(100, fund_score + 10)
-            elif analyst["analyst_action"] == "upgrade":
-                fund_score = min(100, fund_score + 5)
-            elif analyst["analyst_action"] == "downgrade":
-                fund_score = max(0, fund_score - 5)
-            elif analyst["analyst_action"] == "strong_downgrade":
-                fund_score = max(0, fund_score - 10)
+            adjust = {"strong_upgrade": 10, "upgrade": 5, "downgrade": -5, "strong_downgrade": -10}
+            fund_score = max(0, min(100, fund_score + adjust.get(analyst["analyst_action"], 0)))
 
             short_data = get_short_interest_data(info)
-
-            week_hist = hist.tail(5)
-            week_open = float(week_hist["Close"].iloc[0])
-            latest_close = float(week_hist["Close"].iloc[-1])
-            week_change_pct = ((latest_close - week_open) / week_open) * 100
-
-            if math.isnan(week_change_pct) or math.isinf(week_change_pct):
-                week_change_pct = 0.0
-
-            avg_vol = float(hist["Volume"].mean())
-            latest_vol = float(hist["Volume"].iloc[-1])
-            volume_spike = round(latest_vol / avg_vol, 2) if avg_vol > 0 else 1.0
-
-            price_history = [round(float(x), 2) for x in hist["Close"].tolist()]
-            date_history = [str(d)[:10] for d in hist.index.tolist()]
             earnings_date = get_earnings_alert(stock)
-
-            # Historical metrics from 30-day price data
             hist_metrics = calculate_historical_metrics(price_history)
 
-            # Beta from yfinance info if available
             beta = safe("beta")
-            if beta:
+            if beta is not None:
                 beta = round(float(beta), 2)
-            hist_metrics["beta_proxy"] = beta  # use actual beta if available
+            hist_metrics["beta_proxy"] = beta
 
+            # Print summary
+            vol_tag = f" vol:{hist_metrics['volatility_30d']:.0f}%" if hist_metrics["volatility_30d"] else ""
+            trend_tag = f" [{hist_metrics['trend_direction']}]"
+            spike_tag = f" ⚡{volume_spike}x" if volume_spike > 1.5 else ""
             analyst_tag = ""
             if analyst["analyst_action"] in ["strong_upgrade", "upgrade"]:
-                analyst_tag = f" ⬆ {analyst['recent_upgrades']}up"
+                analyst_tag = f" ⬆{analyst['recent_upgrades']}up"
             elif analyst["analyst_action"] in ["strong_downgrade", "downgrade"]:
-                analyst_tag = f" ⬇ {analyst['recent_downgrades']}dn"
+                analyst_tag = f" ⬇{analyst['recent_downgrades']}dn"
             if analyst["analyst_upside"] is not None:
                 analyst_tag += f" tgt:{analyst['analyst_upside']:+.1f}%"
+            short_tag = f" 🩳{short_data['short_float_pct']:.1f}%" if short_data.get("short_float_pct") and short_data["short_float_pct"] > 10 else ""
 
-            short_tag = ""
-            if short_data["short_float_pct"] and short_data["short_float_pct"] > 10:
-                short_tag = f" 🩳{short_data['short_float_pct']:.1f}%"
-
-            trend_tag = f" [{hist_metrics['trend_direction']}]" if hist_metrics["trend_direction"] != "unknown" else ""
-            vol_tag = f" vol:{hist_metrics['volatility_30d']:.0f}%" if hist_metrics["volatility_30d"] else ""
-            spike_tag = f" ⚡{volume_spike}x" if volume_spike > 1.5 else ""
             print(f"  → {ticker}: {week_change_pct:+.2f}%{spike_tag}{analyst_tag}{short_tag}{trend_tag}{vol_tag}")
 
             results.append({
@@ -413,16 +392,16 @@ def get_price_data(tickers):
                 "latest_close": round(latest_close, 2),
                 "week_open": round(week_open, 2),
                 "week_change_pct": round(week_change_pct, 2),
-                "week_high": round(float(week_hist["High"].max()), 2),
-                "week_low": round(float(week_hist["Low"].min()), 2),
+                "week_high": week_high,
+                "week_low": week_low,
                 "avg_volume": round(avg_vol),
                 "latest_volume": round(latest_vol),
                 "volume_spike": volume_spike,
                 "price_history": price_history,
                 "date_history": date_history,
-                "year_high": round(float(info.get("fiftyTwoWeekHigh", 0)), 2),
-                "year_low": round(float(info.get("fiftyTwoWeekLow", 0)), 2),
-                "market_cap": info.get("marketCap", None),
+                "year_high": round(float(info.get("fiftyTwoWeekHigh", 0) or 0), 2),
+                "year_low": round(float(info.get("fiftyTwoWeekLow", 0) or 0), 2),
+                "market_cap": info.get("marketCap"),
                 "pe_ratio": pe_ratio,
                 "earnings_date": earnings_date,
                 "collected_at": datetime.utcnow().isoformat(),
@@ -441,7 +420,6 @@ def get_price_data(tickers):
                 "short_float_pct": short_data["short_float_pct"],
                 "short_change_mom": short_data["short_change_mom"],
                 "short_signal": short_data["short_signal"],
-                # Historical metrics
                 "momentum_30d": hist_metrics["momentum_30d"],
                 "volatility_30d": hist_metrics["volatility_30d"],
                 "trend_direction": hist_metrics["trend_direction"],
