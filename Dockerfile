@@ -19,5 +19,5 @@ COPY scoring/ ./scoring/
 COPY db.py .
 COPY scheduler.py .
 
-# Use shell form so $PORT gets expanded properly at runtime
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Hardcoded to 8080 to match your Railway Target Port settings
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080"]
