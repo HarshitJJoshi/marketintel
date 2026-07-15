@@ -1,0 +1,10 @@
+frontend/
+data/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+node_modules/
+.DS_Store
+*.log
