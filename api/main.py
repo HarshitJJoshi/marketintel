@@ -17,15 +17,21 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 sb: Client = None
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
-        sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        # Test the connection with a simple query
+        import httpx
+        from supabase.lib.client_options import ClientOptions
+        options = ClientOptions(
+            postgrest_client_timeout=30,
+            storage_client_timeout=30,
+            httpx_client=httpx.Client(verify=False, timeout=30)
+        )
+        sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY, options=options)
         test = sb.table("scores").select("ticker").limit(1).execute()
-        print(f"✓ Supabase connected — test query returned {len(test.data)} rows")
+        print(f"✓ Supabase connected — {len(test.data)} rows")
     except Exception as e:
         print(f"⚠ Supabase connection failed: {type(e).__name__}: {e}")
         sb = None
 else:
-    print(f"⚠ Supabase env vars missing — URL:{bool(SUPABASE_URL)} KEY:{bool(SUPABASE_SERVICE_KEY)}")
+    print(f"⚠ Supabase env vars missing")
 
 app = FastAPI(title="MarketIntel API")
 
@@ -41,15 +47,21 @@ pipeline_status = {"running": False, "last_run": None, "last_error": None}
 # ─── Data loading — Supabase first, JSON fallback ─────────────────
 
 def get_latest_scores_from_supabase():
-    """Load latest scores from Supabase"""
+    """Load latest scores from Supabase, deduped by ticker (keep highest score)"""
     try:
         today = str(date.today())
         result = sb.table("scores").select("*").eq("date", today).order("composite_score", desc=True).execute()
-        if result.data:
-            return result.data
-        # Fallback to most recent date if today has no data
-        result = sb.table("scores").select("*").order("date", desc=True).order("composite_score", desc=True).limit(200).execute()
-        return result.data or []
+        if not result.data:
+            # Fallback to most recent date if today has no data
+            result = sb.table("scores").select("*").order("date", desc=True).order("composite_score", desc=True).limit(400).execute()
+
+        # Deduplicate — keep highest score per ticker
+        seen = {}
+        for row in (result.data or []):
+            ticker = row["ticker"]
+            if ticker not in seen or (row.get("composite_score") or 0) > (seen[ticker].get("composite_score") or 0):
+                seen[ticker] = row
+        return list(seen.values())
     except Exception as e:
         print(f"Supabase scores fetch failed: {e}")
         return []
@@ -699,12 +711,18 @@ def get_strategies():
 
 @app.get("/api/events")
 def get_events(days: int = 14):
+    """Try JSON file first, then generate live if not available (Railway has no data folder)"""
     try:
         with open("data/processed/events.json") as f:
             return json.load(f)
-    except:
+    except FileNotFoundError:
+        pass
+    try:
         from collectors.events_collector import get_upcoming_events
         return {"events": get_upcoming_events(days_ahead=days)}
+    except Exception as e:
+        print(f"Events fallback failed: {e}")
+        return {"events": []}
 
 @app.get("/api/watchlist")
 def get_watchlist():
