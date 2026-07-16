@@ -18,9 +18,14 @@ sb: Client = None
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
         sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        print("✓ Supabase connected")
+        # Test the connection with a simple query
+        test = sb.table("scores").select("ticker").limit(1).execute()
+        print(f"✓ Supabase connected — test query returned {len(test.data)} rows")
     except Exception as e:
-        print(f"⚠ Supabase connection failed, falling back to JSON: {e}")
+        print(f"⚠ Supabase connection failed: {type(e).__name__}: {e}")
+        sb = None
+else:
+    print(f"⚠ Supabase env vars missing — URL:{bool(SUPABASE_URL)} KEY:{bool(SUPABASE_SERVICE_KEY)}")
 
 app = FastAPI(title="MarketIntel API")
 
@@ -774,13 +779,3 @@ def get_vix():
             return json.load(f)
     except:
         return {"value": None, "signal": "neutral", "context": ""}
-
-@app.get("/api/debug")
-def debug():
-    import os
-    return {
-        "supabase_url_set": bool(os.getenv("SUPABASE_URL")),
-        "supabase_key_set": bool(os.getenv("SUPABASE_SERVICE_KEY")),
-        "supabase_url_prefix": os.getenv("SUPABASE_URL", "")[:30] if os.getenv("SUPABASE_URL") else None,
-        "sb_connected": sb is not None
-    }
