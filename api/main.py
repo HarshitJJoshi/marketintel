@@ -774,3 +774,13 @@ def get_vix():
             return json.load(f)
     except:
         return {"value": None, "signal": "neutral", "context": ""}
+
+@app.get("/api/debug")
+def debug():
+    import os
+    return {
+        "supabase_url_set": bool(os.getenv("SUPABASE_URL")),
+        "supabase_key_set": bool(os.getenv("SUPABASE_SERVICE_KEY")),
+        "supabase_url_prefix": os.getenv("SUPABASE_URL", "")[:30] if os.getenv("SUPABASE_URL") else None,
+        "sb_connected": sb is not None
+    }
