@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import axios from "axios"
 
-const API = "http://localhost:8000"
+const API = "https://marketintel-production-e203.up.railway.app"
 const fmt = (n, d = 2) => (n != null && !Number.isNaN(Number(n))) ? Number(n).toFixed(d) : "—"
 const fmtCap = (n) => {
   if (!n) return "—"
