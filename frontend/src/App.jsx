@@ -1293,7 +1293,7 @@ export default function App() {
           {/* Macro inline */}
           {fg?.value != null && (
             <span style={{ fontSize: 11.5, color: C.textMuted }}>
-              Fear &amp; Greed{" "}
+              Fear & Greed{" "}
               <span style={{ ...S.num, fontWeight: 650, color: fg.value <= 25 ? C.red : fg.value <= 45 ? C.amber : fg.value >= 75 ? C.green : C.text }}>
                 {fg.value}
               </span>
