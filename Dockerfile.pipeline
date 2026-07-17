@@ -1,0 +1,65 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System dependencies — including everything for Playwright + Whisper + FinBERT
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    ca-certificates \
+    ffmpeg \
+    curl \
+    wget \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libx11-6 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libxkbcommon0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libatspi2.0-0 \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-pipeline.txt .
+
+# Install everything including heavy ML libs
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-pipeline.txt && \
+    pip install --no-cache-dir openai-whisper playwright playwright-stealth
+
+# Install Playwright browsers (Chromium only to save space)
+RUN playwright install --with-deps chromium
+
+# Pre-download FinBERT model to bake it into the image (faster startup)
+RUN python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; \
+    AutoTokenizer.from_pretrained('ProsusAI/finbert'); \
+    AutoModelForSequenceClassification.from_pretrained('ProsusAI/finbert')"
+
+# Pre-download Whisper model (base is a good balance for podcasts)
+RUN python -c "import whisper; whisper.load_model('base')"
+
+# Copy application code
+COPY api/ ./api/
+COPY collectors/ ./collectors/
+COPY nlp/ ./nlp/
+COPY scoring/ ./scoring/
+COPY db.py .
+COPY scheduler.py .
+
+# Create data directories the collectors need
+RUN mkdir -p data/raw data/processed data/history
+
+# Run the pipeline once and exit (Railway cron re-invokes on schedule)
+CMD ["python", "scheduler.py", "--now"]
