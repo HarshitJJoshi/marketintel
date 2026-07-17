@@ -17,14 +17,7 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 sb: Client = None
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
-        import httpx
-        from supabase.lib.client_options import ClientOptions
-        options = ClientOptions(
-            postgrest_client_timeout=30,
-            storage_client_timeout=30,
-            httpx_client=httpx.Client(verify=False, timeout=30)
-        )
-        sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY, options=options)
+        sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         test = sb.table("scores").select("ticker").limit(1).execute()
         print(f"✓ Supabase connected — {len(test.data)} rows")
     except Exception as e:
@@ -512,6 +505,14 @@ def trigger_refresh(background_tasks: BackgroundTasks):
 @app.get("/api/status")
 def get_status():
     return pipeline_status
+
+@app.get("/api/debug")
+def debug():
+    return {
+        "supabase_url_set": bool(SUPABASE_URL),
+        "supabase_key_set": bool(SUPABASE_SERVICE_KEY),
+        "sb_connected": sb is not None,
+    }
 
 @app.get("/api/history/{ticker}")
 def get_ticker_history(ticker: str, days: int = 30):
