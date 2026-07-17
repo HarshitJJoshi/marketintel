@@ -712,18 +712,107 @@ def get_strategies():
 
 @app.get("/api/events")
 def get_events(days: int = 14):
-    """Try JSON file first, then generate live if not available (Railway has no data folder)"""
+    """Build events from Supabase price_data (earnings) + hardcoded Fed dates."""
+    from datetime import datetime, timedelta
+
+    # Hardcoded Fed meeting calendar
+    FED_DATES = [
+        {"date": "2026-01-28", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-01-29", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+        {"date": "2026-03-18", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-03-19", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+        {"date": "2026-05-06", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-05-07", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+        {"date": "2026-06-17", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-06-18", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+        {"date": "2026-07-28", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-07-29", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+        {"date": "2026-09-15", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-09-16", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+        {"date": "2026-11-04", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-11-05", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+        {"date": "2026-12-15", "event": "Fed Meeting", "type": "fed", "impact": "high"},
+        {"date": "2026-12-16", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
+    ]
+
+    today = datetime.utcnow().date()
+    horizon = today + timedelta(days=days)
+    events = []
+
+    # Fed events
+    for e in FED_DATES:
+        try:
+            d = datetime.strptime(e["date"], "%Y-%m-%d").date()
+            if today <= d <= horizon:
+                days_away = (d - today).days
+                events.append({
+                    **e,
+                    "days_away": days_away,
+                    "is_today": days_away == 0,
+                    "is_tomorrow": days_away == 1,
+                })
+        except: pass
+
+    # Earnings from Supabase price_data
+    if sb:
+        try:
+            result = sb.table("price_data").select("ticker,earnings_date").not_.is_("earnings_date", "null").execute()
+            seen = set()
+            for row in (result.data or []):
+                ticker = row.get("ticker")
+                edate = row.get("earnings_date")
+                if not edate or ticker in seen:
+                    continue
+                seen.add(ticker)
+                try:
+                    d = datetime.strptime(edate, "%Y-%m-%d").date()
+                    if today <= d <= horizon:
+                        days_away = (d - today).days
+                        events.append({
+                            "date": edate,
+                            "event": f"{ticker} Earnings",
+                            "type": "earnings",
+                            "impact": "medium",
+                            "days_away": days_away,
+                            "is_today": days_away == 0,
+                            "is_tomorrow": days_away == 1,
+                            "ticker": ticker,
+                        })
+                except: pass
+        except Exception as e:
+            print(f"Earnings fetch failed: {e}")
+
+    events.sort(key=lambda x: x["days_away"])
+    return {"events": events}
+
+@app.get("/api/congress")
+def get_congress():
+    """Return congressional trading signals from Supabase."""
+    if not sb:
+        return {"trades": [], "tickers": []}
     try:
-        with open("data/processed/events.json") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        pass
-    try:
-        from collectors.events_collector import get_upcoming_events
-        return {"events": get_upcoming_events(days_ahead=days)}
+        result = sb.table("congress_trades").select("*").execute()
+        rows = result.data or []
+        # Group by ticker for aggregate view
+        tickers = {}
+        for r in rows:
+            t = r["ticker"]
+            if t not in tickers:
+                tickers[t] = {
+                    "ticker": t,
+                    "buys": r.get("buys", 0),
+                    "sells": r.get("sells", 0),
+                    "signal": r.get("signal"),
+                    "congress_score": r.get("congress_score"),
+                }
+        return {
+            "trades": rows,
+            "tickers": list(tickers.values()),
+            "total": len(rows),
+        }
     except Exception as e:
-        print(f"Events fallback failed: {e}")
-        return {"events": []}
+        print(f"Congress fetch failed: {e}")
+        return {"trades": [], "tickers": []}
 
 @app.get("/api/watchlist")
 def get_watchlist():
