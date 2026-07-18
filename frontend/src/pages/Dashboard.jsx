@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import UserMenu from '../components/UserMenu'
+import { useAuth } from '../context/AuthContext'
+import ProGate from '../components/ProGate'
 import axios from "axios"
 
 const API = "https://marketintel-production-e203.up.railway.app"
@@ -197,7 +199,7 @@ function HistoryChart({ history, width = 520, height = 120 }) {
 }
 
 // ─── Modal ───────────────────────────────────────────────────────
-function Modal({ ticker, data, allScores, onClose }) {
+function Modal({ ticker, data, allScores, isPro, onClose }) {
   const [detail, setDetail] = useState(null)
   const [history, setHistory] = useState(null)
 
@@ -299,6 +301,12 @@ function Modal({ ticker, data, allScores, onClose }) {
             </div>
           </div>
 
+          {!isPro ? (
+            <div style={{ marginBottom: 20 }}>
+              <ProGate feature="the full 12-signal breakdown" variant="solid" />
+            </div>
+          ) : (<>
+
           {/* Analyst / Short / Congress */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
             <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px" }}>
@@ -391,7 +399,7 @@ function Modal({ ticker, data, allScores, onClose }) {
             <SignalBar label="Institutional" value={Math.min(100, (t.major_institutions || 0) * 20 + 40)} />
             <SignalBar label="Search interest" value={t.trends_score} />
             <SignalBar label="Options flow" value={t.options_score} />
-          </div>
+          </div> </>)}
 
           {/* Score history */}
           <div style={{ marginBottom: 20 }}>
@@ -1215,6 +1223,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [activeFilters, setActiveFilters] = useState([])
   const [sortBy, setSortBy] = useState("score")
+  const { isPro } = useAuth()
 
   const fetchData = useCallback(() => {
     Promise.all([
@@ -1267,7 +1276,7 @@ export default function Dashboard() {
       fontFamily: "-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif",
     }}>
       {selectedTicker && (
-        <Modal ticker={selectedTicker} data={data} allScores={allScores} onClose={handleModalClose} />
+        <Modal ticker={selectedTicker} data={data} allScores={allScores} isPro={isPro} onClose={handleModalClose} />
       )}
 
       {/* Top bar */}
@@ -1322,11 +1331,14 @@ export default function Dashboard() {
 
       <main style={{ maxWidth: 1340, margin: "0 auto", padding: "1.75rem 1.5rem" }}>
         {activeTab === "history" ? (
-          <HistoryTab onTickerClick={handleTickerClick} />
+          isPro ? <HistoryTab onTickerClick={handleTickerClick} />
+                : <ProGate feature="score history tracking" variant="solid" />
         ) : activeTab === "strategies" ? (
-          <StrategiesTab onTickerClick={handleTickerClick} />
+          isPro ? <StrategiesTab onTickerClick={handleTickerClick} />
+                : <ProGate feature="portfolio strategies" variant="solid" />
         ) : activeTab === "congress" ? (
-          <CongressTab allScores={allScores} onTickerClick={handleTickerClick} />
+          isPro ? <CongressTab allScores={allScores} onTickerClick={handleTickerClick} />
+                : <ProGate feature="the Congress tab" variant="solid" />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 250px", gap: 28, alignItems: "start" }}>
             <div>
@@ -1357,12 +1369,18 @@ export default function Dashboard() {
               </div>
 
               {/* Filters */}
-              <FilterBar
-                allScores={allScores.filter(t => !t.is_etf)}
-                activeFilters={activeFilters} setActiveFilters={setActiveFilters}
-                sortBy={sortBy} setSortBy={setSortBy}
-                onTickerClick={handleTickerClick}
-              />
+              {isPro ? (
+                <FilterBar
+                  allScores={allScores.filter(t => !t.is_etf)}
+                  activeFilters={activeFilters} setActiveFilters={setActiveFilters}
+                  sortBy={sortBy} setSortBy={setSortBy}
+                  onTickerClick={handleTickerClick}
+                />
+              ) : (
+                <div style={{ marginBottom: '1.75rem' }}>
+                  <ProGate feature="advanced screening filters" variant="solid" />
+                </div>
+              )}
 
               {activeFilters.length === 0 && (
                 <>
@@ -1370,7 +1388,7 @@ export default function Dashboard() {
                   <section style={{ marginBottom: "1.75rem" }}>
                     <div style={{ ...S.label, marginBottom: 12 }}>Top stocks</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10 }}>
-                      {(data.top5_stocks || []).map((t, i) => (
+                      {(data.top5_stocks || []).slice(0, isPro ? 5 : 3).map((t, i) => (
                         <TickerCard key={t.ticker} t={t} rank={i + 1} onClick={handleTickerClick} />
                       ))}
                     </div>
@@ -1380,7 +1398,7 @@ export default function Dashboard() {
                   <section style={{ marginBottom: "1.75rem" }}>
                     <div style={{ ...S.label, marginBottom: 12 }}>Top ETFs</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10 }}>
-                      {(data.top5_etfs || []).map((t, i) => (
+                      {(data.top5_etfs || []).slice(0, isPro ? 5 : 3).map((t, i) => (
                         <TickerCard key={t.ticker} t={t} rank={i + 1} onClick={handleTickerClick} />
                       ))}
                     </div>
