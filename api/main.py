@@ -1,19 +1,16 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import math
 import os
 from datetime import datetime, date
 from dotenv import load_dotenv
-
 load_dotenv()
 
 # ─── Supabase client ──────────────────────────────────────────────
 from supabase import create_client, Client
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-
 sb: Client = None
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
@@ -27,7 +24,6 @@ else:
     print(f"⚠ Supabase env vars missing")
 
 app = FastAPI(title="MarketIntel API")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,18 +33,31 @@ app.add_middleware(
 
 pipeline_status = {"running": False, "last_run": None, "last_error": None}
 
-# ─── Data loading — Supabase first, JSON fallback ─────────────────
+# ─── Auth helper ──────────────────────────────────────────────────
+def get_user_from_token(authorization: str):
+    """Extract user_id from Supabase JWT in Authorization header."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing auth token")
+    if not sb:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    token = authorization.replace("Bearer ", "")
+    try:
+        user_resp = sb.auth.get_user(token)
+        if not user_resp or not user_resp.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user_resp.user.id
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Auth failed: {e}")
 
+# ─── Data loading — Supabase first, JSON fallback ─────────────────
 def get_latest_scores_from_supabase():
-    """Load latest scores from Supabase, deduped by ticker (keep highest score)"""
     try:
         today = str(date.today())
         result = sb.table("scores").select("*").eq("date", today).order("composite_score", desc=True).execute()
         if not result.data:
-            # Fallback to most recent date if today has no data
             result = sb.table("scores").select("*").order("date", desc=True).order("composite_score", desc=True).limit(400).execute()
-
-        # Deduplicate — keep highest score per ticker
         seen = {}
         for row in (result.data or []):
             ticker = row["ticker"]
@@ -60,7 +69,6 @@ def get_latest_scores_from_supabase():
         return []
 
 def get_latest_price_map_from_supabase():
-    """Load most recent price row per ticker — not filtered by today"""
     try:
         result = sb.table("price_data").select("*").order("date", desc=True).limit(300).execute()
         price_map = {}
@@ -73,7 +81,6 @@ def get_latest_price_map_from_supabase():
         return {}
 
 def get_macro_from_supabase():
-    """Load macro data from Supabase"""
     try:
         today = str(date.today())
         result = sb.table("macro_data").select("*").eq("date", today).execute()
@@ -86,50 +93,47 @@ def get_macro_from_supabase():
         return {}
 
 def load_latest_scores():
-    """Load scores — Supabase first, JSON fallback"""
     if sb:
         scores = get_latest_scores_from_supabase()
         if scores:
-            # Reconstruct sector summary
             sectors = build_sector_summary(scores)
             return {
                 "generated_at": scores[0].get("created_at", datetime.utcnow().isoformat()) if scores else datetime.utcnow().isoformat(),
                 "scores": scores,
                 "sectors": sectors
             }
-
-    # JSON fallback
-    files = sorted([f for f in os.listdir("data/processed") if f.startswith("scores_") and f.endswith(".json")])
-    if not files:
+    try:
+        files = sorted([f for f in os.listdir("data/processed") if f.startswith("scores_") and f.endswith(".json")])
+        if not files:
+            return None
+        with open(f"data/processed/{files[-1]}") as f:
+            return json.load(f)
+    except FileNotFoundError:
         return None
-    with open(f"data/processed/{files[-1]}") as f:
-        return json.load(f)
 
 def get_price_map():
-    """Load price map — Supabase first, JSON fallback"""
     if sb:
         price_map = get_latest_price_map_from_supabase()
         if price_map:
             return price_map
-
-    # JSON fallback
     price_map = {}
-    price_files = sorted([f for f in os.listdir("data/raw") if f.startswith("prices_")])
-    if price_files:
-        with open(f"data/raw/{price_files[-1]}") as f:
-            for p in json.load(f):
-                price_map[p["ticker"]] = p
+    try:
+        price_files = sorted([f for f in os.listdir("data/raw") if f.startswith("prices_")])
+        if price_files:
+            with open(f"data/raw/{price_files[-1]}") as f:
+                for p in json.load(f):
+                    price_map[p["ticker"]] = p
+    except FileNotFoundError:
+        pass
     return price_map
 
 def build_sector_summary(scores):
-    """Rebuild sector summary from flat scores list"""
     sector_data = {}
     for s in scores:
         sector = s.get("sector", "Other")
         if sector not in sector_data:
             sector_data[sector] = {"sector": sector, "tickers": [], "avg_change": 0, "top_score": 0}
         sector_data[sector]["tickers"].append(s)
-
     result = []
     for sector, data in sector_data.items():
         tickers = data["tickers"]
@@ -138,7 +142,6 @@ def build_sector_summary(scores):
         data["top_score"] = round(max(t["composite_score"] for t in tickers if t.get("composite_score")), 1)
         data["top_5"] = sorted(tickers, key=lambda x: x.get("composite_score", 0), reverse=True)[:5]
         result.append(data)
-
     return sorted(result, key=lambda x: x["avg_change"], reverse=True)
 
 def run_pipeline_task():
@@ -156,7 +159,6 @@ def run_pipeline_task():
         pipeline_status["running"] = False
 
 # ─── Helpers ──────────────────────────────────────────────────────
-
 def sanitize_floats(obj):
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
@@ -233,14 +235,12 @@ def generate_reasoning(ticker_data, price_data_map):
     major_institutions = ticker_data.get("major_institutions", 0) or 0
     insider_count = ticker_data.get("insider_count", 0) or 0
     bullish_signals = ticker_data.get("bullish_signals", 0) or 0
-
     reasons = []
     watches = []
-
     if price_score > 70:
         reasons.append(f"strong price momentum (+{price_chg:.1f}% this week)")
     elif price_score > 55:
-        reasons.append(f"positive price action (+{price_chg:.1f}% this week)")
+        reasons.append(f"positive price action ({price_chg:+.1f}% this week)")
     if mentions > 5:
         reasons.append(f"high Reddit activity ({mentions} mentions)")
     if sentiment > 0.2:
@@ -265,7 +265,6 @@ def generate_reasoning(ticker_data, price_data_map):
         reasons.append(f"rare high-confluence setup — {bullish_signals}/12 signals aligned")
     if not reasons:
         reasons.append("composite signal from price, sentiment and buzz")
-
     if sentiment < -0.1 and price_chg > 0:
         watches.append("price rising despite bearish sentiment — could reverse")
     if vol_spike > 3:
@@ -284,7 +283,6 @@ def generate_reasoning(ticker_data, price_data_map):
         watches.append(f"negative revenue growth ({revenue_growth}%) — fundamentals weakening")
     if not watches:
         watches.append("monitor for broader market shifts")
-
     if mentions == 0:
         reddit_interp = "Not on Reddit's radar this week — price move is institutional or news-driven, not retail crowd."
     elif mentions <= 3:
@@ -293,14 +291,12 @@ def generate_reasoning(ticker_data, price_data_map):
         reddit_interp = f"Moderate Reddit interest ({mentions} mentions). Growing awareness but not overcrowded."
     else:
         reddit_interp = f"High Reddit buzz ({mentions} mentions). Crowd heavily engaged — momentum strong but watch for peak hype."
-
     if reddit_score > 2000:
         reddit_interp += " Posts getting strong upvotes — high conviction from the community."
     elif reddit_score > 500:
         reddit_interp += " Decent community engagement."
     elif reddit_score < 50 and mentions > 3:
         reddit_interp += " Mentioned often but low upvotes — could be noise."
-
     if sentiment > 0.3:
         sentiment_interp = "Strongly bullish — very positive language around this stock."
     elif sentiment > 0.1:
@@ -311,7 +307,6 @@ def generate_reasoning(ticker_data, price_data_map):
         sentiment_interp = "Mildly bearish — more negative than positive. Tread carefully."
     else:
         sentiment_interp = "Strongly bearish — negative crowd sentiment. Cross-check fundamentals before acting."
-
     if sentiment > 0.1 and mentions > 5 and price_chg > 0:
         signal_call, signal_color = "STRONG SIGNAL", "green"
         signal_desc = "Price momentum, bullish sentiment, and Reddit buzz all aligned."
@@ -330,7 +325,6 @@ def generate_reasoning(ticker_data, price_data_map):
     else:
         signal_call, signal_color = "NEUTRAL", "amber"
         signal_desc = "Mixed signals. No strong case for or against right now."
-
     deps = DEPENDENCIES.get(ticker, {"related_etfs": [], "watch": [], "thesis": ""})
     return {
         "reasons": reasons, "watches": watches,
@@ -341,7 +335,6 @@ def generate_reasoning(ticker_data, price_data_map):
     }
 
 # ─── API Endpoints ────────────────────────────────────────────────
-
 @app.get("/")
 def root():
     return {"status": "ok", "message": "MarketIntel API", "supabase": sb is not None}
@@ -351,17 +344,13 @@ def get_summary():
     data = load_latest_scores()
     if not data:
         return {"error": "No scored data found. Run scheduler.py first."}
-
     scores = data["scores"]
     sectors = data["sectors"]
     price_map = get_price_map()
-
     stocks = sorted([s for s in scores if not s.get("is_etf")], key=lambda x: x.get("composite_score", 0), reverse=True)
     etfs = sorted([s for s in scores if s.get("is_etf")], key=lambda x: x.get("composite_score", 0), reverse=True)
-
     top5_stocks = stocks[:5]
     top5_etfs = etfs[:5]
-
     for t in top5_stocks + top5_etfs:
         t["reasoning"] = generate_reasoning(t, price_map)
         p = price_map.get(t["ticker"], {})
@@ -373,7 +362,6 @@ def get_summary():
         t["market_cap"] = p.get("market_cap")
         t["pe_ratio"] = p.get("pe_ratio")
         t["latest_close"] = t.get("latest_close") or p.get("latest_close")
-
     top_sector = sectors[0] if sectors else {}
     return sanitize_floats({
         "generated_at": data["generated_at"],
@@ -417,11 +405,9 @@ def get_ticker_detail(ticker: str):
     data = load_latest_scores()
     if not data:
         return {"error": "No data found"}
-
     score_data = next((s for s in data["scores"] if s["ticker"] == ticker), {})
     price_map = get_price_map()
     price_data = price_map.get(ticker, {})
-
     COMPANY_NAMES = {
         "MSFT": ["microsoft"], "AAPL": ["apple"], "NVDA": ["nvidia"],
         "AMD": ["amd", "advanced micro"], "GOOGL": ["google", "alphabet"],
@@ -438,22 +424,23 @@ def get_ticker_detail(ticker: str):
         "COST": ["costco"], "SBUX": ["starbucks"], "NET": ["cloudflare"],
         "ABBV": ["abbvie"], "DHR": ["danaher"], "TMO": ["thermo fisher"],
     }
-
     search_terms = [ticker.lower()] + COMPANY_NAMES.get(ticker, [])
     headlines = []
-    rss_files = sorted([f for f in os.listdir("data/raw") if f.startswith("rss_")])
-    if rss_files:
-        with open(f"data/raw/{rss_files[-1]}") as f:
-            for a in json.load(f):
-                text = f"{a.get('title', '')} {a.get('summary', '')}".lower()
-                if any(term in text for term in search_terms):
-                    headlines.append({
-                        "title": a.get("title", ""),
-                        "source": a.get("source", ""),
-                        "url": a.get("url", ""),
-                        "published_at": a.get("published_at", "")
-                    })
-
+    try:
+        rss_files = sorted([f for f in os.listdir("data/raw") if f.startswith("rss_")])
+        if rss_files:
+            with open(f"data/raw/{rss_files[-1]}") as f:
+                for a in json.load(f):
+                    text = f"{a.get('title', '')} {a.get('summary', '')}".lower()
+                    if any(term in text for term in search_terms):
+                        headlines.append({
+                            "title": a.get("title", ""),
+                            "source": a.get("source", ""),
+                            "url": a.get("url", ""),
+                            "published_at": a.get("published_at", "")
+                        })
+    except FileNotFoundError:
+        pass
     return sanitize_floats({
         "ticker": ticker,
         "score_data": score_data,
@@ -464,22 +451,17 @@ def get_ticker_detail(ticker: str):
 @app.get("/api/ticker/{ticker}")
 def get_ticker(ticker: str):
     ticker = ticker.upper()
-
-    # Try Supabase first
     if sb:
         try:
             today = str(date.today())
             result = sb.table("scores").select("*").eq("ticker", ticker).eq("date", today).execute()
             if result.data:
                 return result.data[0]
-            # Try most recent date
             result = sb.table("scores").select("*").eq("ticker", ticker).order("date", desc=True).limit(1).execute()
             if result.data:
                 return result.data[0]
         except Exception as e:
             print(f"Supabase ticker fetch failed: {e}")
-
-    # JSON fallback
     data = load_latest_scores()
     if not data:
         return {"error": "No data found"}
@@ -517,8 +499,6 @@ def debug():
 @app.get("/api/history/{ticker}")
 def get_ticker_history(ticker: str, days: int = 30):
     ticker = ticker.upper()
-
-    # Try Supabase first
     if sb:
         try:
             result = sb.table("scores").select(
@@ -530,15 +510,12 @@ def get_ticker_history(ticker: str, days: int = 30):
             return sanitize_floats({"ticker": ticker, "history": history})
         except Exception as e:
             print(f"Supabase history fetch failed: {e}")
-
-    # JSON fallback
     from scoring.history import load_ticker_history
     history = load_ticker_history(ticker, days=days)
     return sanitize_floats({"ticker": ticker, "history": history})
 
 @app.get("/api/history")
 def get_all_history(days: int = 14):
-    # Try Supabase first
     if sb:
         try:
             result = sb.table("scores").select(
@@ -546,20 +523,15 @@ def get_all_history(days: int = 14):
                 "price_score,sentiment_score,buzz_score,st_score,fundamental_score,options_score,"
                 "search_trend,unusual_options,momentum_30d,volatility_30d,trend_direction"
             ).order("date", desc=True).limit(days * 200).execute()
-
-            # Group by ticker
             history_map = {}
             for row in reversed(result.data or []):
                 t = row["ticker"]
                 if t not in history_map:
                     history_map[t] = []
                 history_map[t].append(row)
-
             return sanitize_floats({"history": history_map})
         except Exception as e:
             print(f"Supabase all history fetch failed: {e}")
-
-    # JSON fallback
     from scoring.history import load_all_history
     return sanitize_floats({"history": load_all_history(days=days)})
 
@@ -568,13 +540,10 @@ def get_strategies():
     data = load_latest_scores()
     if not data:
         return {"error": "No data found"}
-
     scores = data["scores"]
     price_map = get_price_map()
-
     stocks = sorted([s for s in scores if not s.get("is_etf")], key=lambda x: x.get("composite_score", 0), reverse=True)
     etfs = sorted([s for s in scores if s.get("is_etf")], key=lambda x: x.get("composite_score", 0), reverse=True)
-
     def enrich(t):
         p = price_map.get(t["ticker"], {})
         return {**t,
@@ -583,7 +552,6 @@ def get_strategies():
             "year_high": p.get("year_high"), "year_low": p.get("year_low"),
             "earnings_date": t.get("earnings_date") or p.get("earnings_date"),
             "market_cap": p.get("market_cap"), "pe_ratio": p.get("pe_ratio")}
-
     def momentum_score(t):
         mom_30d = t.get("momentum_30d") or 0
         week_chg = t.get("week_change_pct", 0) or 0
@@ -593,7 +561,6 @@ def get_strategies():
         trend_bonus = 1.2 if trend == "uptrend" else 0.8 if trend == "downtrend" else 1.0
         return (mom_30d * 0.4 + week_chg * 0.3 + (t.get("avg_sentiment") or 0) * 15 +
                 (t.get("mentions") or 0) * 0.3) * vol_bonus * trend_bonus
-
     def safety_score(t):
         vol_tag = t.get("volatility_tag", "unknown")
         beta = t.get("beta") or 1.0
@@ -608,7 +575,6 @@ def get_strategies():
             (15 if mom_30d > 5 else 5 if mom_30d > 0 else 0) -
             (max(0, (pe - 30) * 0.3) if pe > 30 else 0) -
             (20 if chg < 0 else 0))
-
     def balanced_score(t):
         trend = t.get("trend_direction", "unknown")
         vol_tag = t.get("volatility_tag", "unknown")
@@ -616,7 +582,6 @@ def get_strategies():
         trend_bonus = 1.2 if trend == "uptrend" else 0.9 if trend == "downtrend" else 1.0
         vol_penalty = 0.85 if vol_tag == "high" else 1.0
         return (t.get("composite_score") or 0) * trend_bonus * vol_penalty + mom_30d * 0.3
-
     def build_rationale(t, style="balanced"):
         parts = [f"Score {t.get('composite_score', 0)}/100"]
         mom = t.get("momentum_30d")
@@ -626,13 +591,11 @@ def get_strategies():
         if style == "aggressive" and t.get("volatility_30d"): parts.append(f"vol {t['volatility_30d']:.0f}% annualized")
         if style == "conservative" and t.get("beta"): parts.append(f"beta {t['beta']:.1f}")
         return " | ".join(parts)
-
     top_stocks = [enrich(s) for s in stocks[:15]]
     top_etfs = [enrich(e) for e in etfs[:8]]
     momentum_stocks = sorted(top_stocks, key=momentum_score, reverse=True)
     safe_stocks = sorted(top_stocks, key=safety_score, reverse=True)
     balanced_stocks = sorted(top_stocks, key=balanced_score, reverse=True)
-
     def build_aggressive():
         picks = [s for s in momentum_stocks if (s.get("week_change_pct") or 0) > 0 and (s.get("momentum_30d") or 0) > 0][:3]
         if len(picks) < 3: picks = momentum_stocks[:3]
@@ -650,13 +613,12 @@ def get_strategies():
                 "allocation_pct": 5, "composite_score": etf_pick["composite_score"],
                 "week_change_pct": etf_pick["week_change_pct"],
                 "rationale": "Small ETF hedge", "horizon": "Flexible", "earnings_date": None})
-        return {"name": "Aggressive", "emoji": "🔥", "tagline": "High volatility + strong 30d momentum",
+        return {"name": "Aggressive", "tagline": "High volatility + strong 30d momentum",
             "risk_level": 3, "expected_horizon": "Days to weeks", "stock_pct": 95, "etf_pct": 5,
             "description": "Picks stocks with strongest 30-day momentum and upward trend, weighted for volatility.",
             "allocations": allocations,
             "warnings": ["High volatility — only invest what you can afford to lose",
                 "Momentum can reverse fast — set stop losses", "Check earnings dates before entering"]}
-
     def build_balanced():
         picks = [s for s in balanced_stocks if (s.get("composite_score") or 0) >= 50
                  and s.get("trend_direction") in ["uptrend", "sideways"]][:2]
@@ -675,12 +637,11 @@ def get_strategies():
                 "week_change_pct": e["week_change_pct"],
                 "rationale": "Sector ETF — broad exposure, lower single-stock risk",
                 "horizon": "Medium to long term", "earnings_date": None})
-        return {"name": "Balanced", "emoji": "⚖️", "tagline": "Strong scores + confirmed 30d trends + ETFs",
+        return {"name": "Balanced", "tagline": "Strong scores + confirmed 30d trends + ETFs",
             "risk_level": 2, "expected_horizon": "1 to 3 months", "stock_pct": 60, "etf_pct": 40,
             "description": "Picks stocks where 30-day trend confirms the score. Paired with sector ETFs.",
             "allocations": allocations,
             "warnings": ["Still exposed to sector-wide downturns", "Rebalance monthly as scores update"]}
-
     def build_conservative():
         picks = [s for s in safe_stocks if s.get("volatility_tag") in ["low", "medium"]
                  and s.get("trend_direction") != "downtrend"][:1]
@@ -701,12 +662,11 @@ def get_strategies():
                 "volatility_30d": t.get("volatility_30d"), "beta": t.get("beta"),
                 "trend_direction": t.get("trend_direction"), "rationale": build_rationale(t, "conservative"),
                 "horizon": "Long term", "earnings_date": t.get("earnings_date")})
-        return {"name": "Conservative", "emoji": "🛡️", "tagline": "Low volatility + low beta + steady uptrend",
+        return {"name": "Conservative", "tagline": "Low volatility + low beta + steady uptrend",
             "risk_level": 1, "expected_horizon": "6+ months", "stock_pct": 10, "etf_pct": 90,
             "description": "ETF-heavy with one low-volatility stock filtered for low beta and confirmed trend.",
             "allocations": allocations,
             "warnings": ["Lower upside — designed for stability", "Best held 6+ months", "Still subject to broad market drawdowns"]}
-
     return sanitize_floats({"generated_at": data["generated_at"],
         "strategies": [build_aggressive(), build_balanced(), build_conservative()]})
 
@@ -714,8 +674,6 @@ def get_strategies():
 def get_events(days: int = 14):
     """Build events from Supabase price_data (earnings) + hardcoded Fed dates."""
     from datetime import datetime, timedelta
-
-    # Hardcoded Fed meeting calendar
     FED_DATES = [
         {"date": "2026-01-28", "event": "Fed Meeting", "type": "fed", "impact": "high"},
         {"date": "2026-01-29", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
@@ -734,12 +692,9 @@ def get_events(days: int = 14):
         {"date": "2026-12-15", "event": "Fed Meeting", "type": "fed", "impact": "high"},
         {"date": "2026-12-16", "event": "Fed Rate Decision", "type": "fed", "impact": "high"},
     ]
-
     today = datetime.utcnow().date()
     horizon = today + timedelta(days=days)
     events = []
-
-    # Fed events
     for e in FED_DATES:
         try:
             d = datetime.strptime(e["date"], "%Y-%m-%d").date()
@@ -752,8 +707,6 @@ def get_events(days: int = 14):
                     "is_tomorrow": days_away == 1,
                 })
         except: pass
-
-    # Earnings from Supabase price_data
     if sb:
         try:
             result = sb.table("price_data").select("ticker,earnings_date").not_.is_("earnings_date", "null").execute()
@@ -781,7 +734,6 @@ def get_events(days: int = 14):
                 except: pass
         except Exception as e:
             print(f"Earnings fetch failed: {e}")
-
     events.sort(key=lambda x: x["days_away"])
     return {"events": events}
 
@@ -793,7 +745,6 @@ def get_congress():
     try:
         result = sb.table("congress_trades").select("*").execute()
         rows = result.data or []
-        # Group by ticker for aggregate view
         tickers = {}
         for r in rows:
             t = r["ticker"]
@@ -814,52 +765,69 @@ def get_congress():
         print(f"Congress fetch failed: {e}")
         return {"trades": [], "tickers": []}
 
+# ─── Watchlist — Supabase-backed, per-user ───────────────────────
 @app.get("/api/watchlist")
-def get_watchlist():
+def get_watchlist(authorization: str = Header(None)):
+    """Return current user's watchlist tickers from Supabase."""
+    if not sb:
+        return {"tickers": []}
     try:
-        with open("data/watchlist.json") as f:
-            return json.load(f)
-    except:
+        user_id = get_user_from_token(authorization)
+        result = sb.table("watchlists").select("ticker").eq("user_id", user_id).execute()
+        tickers = [row["ticker"] for row in (result.data or [])]
+        return {"tickers": tickers}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Watchlist fetch failed: {e}")
         return {"tickers": []}
 
 @app.post("/api/watchlist/{ticker}")
-def add_to_watchlist(ticker: str):
+def add_to_watchlist(ticker: str, authorization: str = Header(None)):
+    """Add ticker to current user's watchlist. Validates via yfinance first."""
+    if not sb:
+        return {"success": False, "error": "Database unavailable"}
     ticker = ticker.upper().strip()
     try:
+        user_id = get_user_from_token(authorization)
         import yfinance as yf
         info = yf.Ticker(ticker).info
         if not info.get("regularMarketPrice") and not info.get("currentPrice"):
             return {"success": False, "error": f"{ticker} not found on markets"}
         try:
-            with open("data/watchlist.json") as f:
-                data = json.load(f)
-        except:
-            data = {"tickers": []}
-        if ticker not in data["tickers"]:
-            data["tickers"].append(ticker)
-            with open("data/watchlist.json", "w") as f:
-                json.dump(data, f, indent=2)
-        return {"success": True, "ticker": ticker,
-                "message": f"{ticker} added — will appear in history after next pipeline run"}
+            sb.table("watchlists").insert({
+                "user_id": user_id,
+                "ticker": ticker,
+            }).execute()
+        except Exception as ins_e:
+            if "duplicate" not in str(ins_e).lower():
+                raise
+        return {
+            "success": True, "ticker": ticker,
+            "message": f"{ticker} added — will appear in history after next pipeline run",
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 @app.delete("/api/watchlist/{ticker}")
-def remove_from_watchlist(ticker: str):
+def remove_from_watchlist(ticker: str, authorization: str = Header(None)):
+    """Remove ticker from current user's watchlist."""
+    if not sb:
+        return {"success": False}
     ticker = ticker.upper().strip()
     try:
-        with open("data/watchlist.json") as f:
-            data = json.load(f)
-        data["tickers"] = [t for t in data["tickers"] if t != ticker]
-        with open("data/watchlist.json", "w") as f:
-            json.dump(data, f, indent=2)
+        user_id = get_user_from_token(authorization)
+        sb.table("watchlists").delete().eq("user_id", user_id).eq("ticker", ticker).execute()
         return {"success": True, "ticker": ticker}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 @app.get("/api/fear-greed")
 def get_fear_greed():
-    # Try Supabase first
     if sb:
         try:
             macro = get_macro_from_supabase()
@@ -875,7 +843,6 @@ def get_fear_greed():
 
 @app.get("/api/vix")
 def get_vix():
-    # Try Supabase first
     if sb:
         try:
             macro = get_macro_from_supabase()

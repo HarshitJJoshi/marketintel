@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import api from "../lib/api"
 import UserMenu from '../components/UserMenu'
 import { useAuth } from '../context/AuthContext'
 import ProGate from '../components/ProGate'
@@ -823,7 +824,7 @@ function HistoryTab({ onTickerClick }) {
 
   useEffect(() => {
     axios.get(`${API}/api/history?days=30`).then(r => setAllHistory(r.data.history))
-    axios.get(`${API}/api/watchlist`).then(r => setWatchlist(r.data.tickers || []))
+    api.get("/api/watchlist").then(r => setWatchlist(r.data.tickers || []))
   }, [])
 
   if (!allHistory) return (
@@ -844,7 +845,7 @@ function HistoryTab({ onTickerClick }) {
   const handleAdd = async (ticker) => {
     setAddStatus("loading")
     try {
-      const r = await axios.post(`${API}/api/watchlist/${ticker}`)
+      const r = await api.post(`/api/watchlist/${ticker}`)
       setAddStatus(r.data.success ? "success" : "error")
       if (r.data.success) {
         setWatchlist(prev => [...prev, ticker])
@@ -854,7 +855,7 @@ function HistoryTab({ onTickerClick }) {
   }
 
   const handleRemove = async (ticker) => {
-    await axios.delete(`${API}/api/watchlist/${ticker}`)
+    await api.delete(`/api/watchlist/${ticker}`)
     setWatchlist(prev => prev.filter(t => t !== ticker))
   }
 

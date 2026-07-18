@@ -26,6 +26,25 @@ def cleanup_old_files():
                 os.remove(f"{proc_dir}/{old_file}")
             log(f"Cleaned {len(files)-1} old {prefix[:-1]} files")
 
+def get_all_watchlist_tickers():
+    """Pull unique tickers from all users' watchlists in Supabase."""
+    import os
+    from supabase import create_client
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        print("Supabase env vars missing — skipping watchlist fetch")
+        return []
+    try:
+        sb = create_client(url, key)
+        result = sb.table("watchlists").select("ticker").execute()
+        tickers = list(set(row["ticker"] for row in (result.data or [])))
+        print(f"Fetched {len(tickers)} unique watchlist tickers from users")
+        return tickers
+    except Exception as e:
+        print(f"Watchlist fetch failed: {e}")
+        return []
+
 def run_pipeline():
     log("Starting MarketIntel daily pipeline...")
     print("=" * 55)
@@ -74,6 +93,11 @@ def run_pipeline():
 
     log(f"NLP found {len(nlp_tickers)} unique tickers in text")
     dynamic_watchlist = build_dynamic_watchlist(nlp_tickers=list(nlp_tickers))
+    # Merge in user watchlist tickers from Supabase
+    user_watchlist_tickers = get_all_watchlist_tickers()
+    if user_watchlist_tickers:
+        dynamic_watchlist = list(set(dynamic_watchlist + user_watchlist_tickers))
+        log(f"Added {len(user_watchlist_tickers)} user watchlist tickers, total: {len(dynamic_watchlist)}")
 
     # Step 3b — StockTwits
     log("Step 3b: Collecting StockTwits sentiment...")
