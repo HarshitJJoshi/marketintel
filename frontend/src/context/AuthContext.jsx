@@ -5,18 +5,38 @@ const AuthContext = createContext({})
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  const [plan, setPlan] = useState('free')
   const [loading, setLoading] = useState(true)
 
+  const fetchPlan = async (userId) => {
+    if (!userId) { setPlan('free'); return }
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('plan')
+        .eq('id', userId)
+        .single()
+      if (error) throw error
+      setPlan(data?.plan || 'free')
+    } catch (e) {
+      console.error('Plan fetch failed:', e)
+      setPlan('free')
+    }
+  }
+
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) fetchPlan(u.id).finally(() => setLoading(false))
+      else setLoading(false)
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) fetchPlan(u.id)
+      else setPlan('free')
     })
 
     return () => subscription.unsubscribe()
@@ -25,10 +45,13 @@ export function AuthProvider({ children }) {
   const signOut = async () => {
     await supabase.auth.signOut()
     setUser(null)
+    setPlan('free')
   }
 
+  const isPro = plan === 'pro'
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
+    <AuthContext.Provider value={{ user, plan, isPro, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   )
