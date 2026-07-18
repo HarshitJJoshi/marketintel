@@ -407,8 +407,8 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             <HistoryChart history={history} />
           </div>
 
-          {/* Interpretation */}
-          {r.signal_call && (
+          {/* Interpretation — pro only */}
+          {isPro && r.signal_call && (
             <div style={{ marginBottom: 20 }}>
               <div style={{
                 borderLeft: `2px solid ${r.signal_color === "green" ? C.green : r.signal_color === "red" ? C.red : C.amber}`,
@@ -429,7 +429,7 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           )}
 
-          {/* Thesis + reasons */}
+          {/* Thesis + reasons — teaser for free, full for pro */}
           {(r.thesis || r.reasons?.length > 0) && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...S.label, marginBottom: 8 }}>Why this ranks</div>
@@ -439,16 +439,32 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
                   fontStyle: "italic",
                 }}>{r.thesis}</div>
               )}
-              {(r.reasons || []).map((reason, i) => (
+              {(r.reasons || []).slice(0, isPro ? 999 : 2).map((reason, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, fontSize: 12, color: C.textMuted, marginBottom: 5, lineHeight: 1.5 }}>
                   <span style={{ color: C.green, flexShrink: 0 }}>+</span>{reason}
                 </div>
               ))}
+              {!isPro && (r.reasons || []).length > 2 && (
+                <div style={{
+                  marginTop: 10, padding: "10px 14px", borderRadius: 8,
+                  background: C.accentDim, border: `1px solid ${C.accent}`,
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <div style={{ fontSize: 11.5, color: C.text }}>
+                    <span style={{ color: C.accent, fontWeight: 600 }}>{(r.reasons || []).length - 2} more reasons</span>
+                    <span style={{ color: C.textMuted }}> · risks · signal breakdown · score history</span>
+                  </div>
+                  <a href="/upgrade" style={{
+                    fontSize: 11.5, fontWeight: 650, padding: "5px 12px",
+                    background: C.accent, color: C.bg, borderRadius: 6, textDecoration: "none",
+                  }}>Unlock</a>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Watch-outs */}
-          {(r.watches || []).filter(w => w !== "monitor for broader market shifts").length > 0 && (
+          {/* Watch-outs — pro only */}
+          {isPro && (r.watches || []).filter(w => w !== "monitor for broader market shifts").length > 0 && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...S.label, marginBottom: 8 }}>Risks</div>
               {r.watches.map((w, i) => (
