@@ -787,24 +787,24 @@ function CongressTab({ allScores, onTickerClick }) {
               <span key={h} style={{ ...S.label, fontSize: 10 }}>{h}</span>
             ))}
           </div>
-          {trades.slice(0, 30).map((tr, i) => (
+                    {trades.slice(0, 30).map((tr, i) => (
             <div key={i} style={{
               display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
               gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.borderSubtle}`,
               alignItems: "center",
             }}>
               <span style={{ fontSize: 12.5, color: C.text }}>
-                {tr.politician}
-                {tr.party && <Chip tone={tr.party === "R" ? "rep" : "dem"} style={{ marginLeft: 6 }}>{tr.party}</Chip>}
+                {tr.representative}
+                {tr.party && <Chip tone={tr.party === "Republican" ? "rep" : "dem"} style={{ marginLeft: 6 }}>{tr.party?.[0]}</Chip>}
               </span>
               <button onClick={() => onTickerClick(tr.ticker)} style={{
                 background: "none", border: "none", cursor: "pointer", textAlign: "left",
                 fontSize: 12.5, fontWeight: 650, color: C.accent, padding: 0, ...S.num,
               }}>{tr.ticker}</button>
-              <span style={{ fontSize: 12, fontWeight: 600, color: tr.trade_type === "buy" ? C.green : C.red }}>
-                {tr.trade_type?.toUpperCase()}
+              <span style={{ fontSize: 12, fontWeight: 600, color: tr.type === "buy" ? C.green : C.red }}>
+                {tr.type?.toUpperCase()}
               </span>
-              <span style={{ fontSize: 11.5, color: C.textMuted, ...S.num }}>{tr.trade_date}</span>
+              <span style={{ fontSize: 11.5, color: C.textMuted, ...S.num }}>{tr.date}</span>
               <span style={{ fontSize: 11.5, color: C.textMuted }}>{tr.amount || "—"}</span>
             </div>
           ))}
