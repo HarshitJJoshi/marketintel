@@ -33,7 +33,7 @@ def get_all_watchlist_tickers():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_KEY")
     if not url or not key:
-        print("Supabase env vars missing — skipping watchlist fetch")
+        print("Supabase env vars missing -- skipping watchlist fetch")
         return []
     try:
         sb = create_client(url, key)
@@ -51,21 +51,21 @@ def run_pipeline():
 
     cleanup_old_files()
 
-    # Step 1 — Reddit
+    # Step 1 -- Reddit
     log("Step 1: Collecting Reddit posts...")
     from collectors.reddit_collector import collect_posts, save_posts
     posts = collect_posts(limit=100)
     save_posts(posts)
     log(f"Reddit: {len(posts)} posts collected")
 
-    # Step 2 — RSS
+    # Step 2 -- RSS
     log("Step 2: Collecting RSS articles...")
     from collectors.rss_collector import collect_rss, save_articles
     articles = collect_rss()
     save_articles(articles)
     log(f"RSS: {len(articles)} articles collected")
 
-    # Step 2b — Podcasts
+    # Step 2b -- Podcasts
     log("Step 2b: Collecting podcast transcripts...")
     try:
         from collectors.podcast_collector import collect_podcasts, save_transcripts
@@ -76,9 +76,9 @@ def run_pipeline():
         else:
             log("Podcasts: no new episodes (cached or unavailable)")
     except Exception as e:
-        log(f"Podcasts: skipped — {e}")
+        log(f"Podcasts: skipped -- {e}")
 
-    # Step 3 — Build dynamic watchlist from NLP
+    # Step 3 -- Build dynamic watchlist from NLP
     log("Step 3: Building dynamic watchlist from NLP...")
     from nlp.ticker_extractor import extract_tickers_from_posts
     from collectors.yfinance_collector import build_dynamic_watchlist, get_price_data, save_price_data
@@ -99,7 +99,7 @@ def run_pipeline():
         dynamic_watchlist = list(set(dynamic_watchlist + user_watchlist_tickers))
         log(f"Added {len(user_watchlist_tickers)} user watchlist tickers, total: {len(dynamic_watchlist)}")
 
-    # Step 3b — StockTwits
+    # Step 3b -- StockTwits
     log("Step 3b: Collecting StockTwits sentiment...")
     try:
         from collectors.stocktwits_collector import collect_stocktwits, save_stocktwits, get_trending_tickers
@@ -110,9 +110,9 @@ def run_pipeline():
             save_stocktwits(st_messages)
             log(f"StockTwits: {len(st_messages)} messages across {len(st_tickers)} tickers")
     except Exception as e:
-        log(f"StockTwits: skipped — {e}")
+        log(f"StockTwits: skipped -- {e}")
 
-    # Step 3c — Google Trends
+    # Step 3c -- Google Trends
     log("Step 3c: Fetching Google Trends signals...")
     try:
         from collectors.trends_collector import get_trends_signal, save_trends
@@ -123,10 +123,10 @@ def run_pipeline():
         rising = sum(1 for v in trends_data.values() if v.get("trend") == "rising")
         log(f"Trends: {rising} tickers with rising search interest")
     except Exception as e:
-        log(f"Trends: skipped — {e}")
+        log(f"Trends: skipped -- {e}")
         trends_data = {}
 
-    # Step 3d — Options flow
+    # Step 3d -- Options flow
     log("Step 3d: Fetching options flow...")
     try:
         from collectors.options_collector import collect_options_flow, save_options
@@ -137,10 +137,10 @@ def run_pipeline():
         unusual = sum(1 for v in options_data.values() if v.get("unusual_activity"))
         log(f"Options: {unusual} tickers with unusual activity")
     except Exception as e:
-        log(f"Options: skipped — {e}")
+        log(f"Options: skipped -- {e}")
         options_data = {}
 
-    # Step 3e — Market events
+    # Step 3e -- Market events
     log("Step 3e: Updating market events calendar...")
     try:
         from collectors.events_collector import get_upcoming_events, save_events
@@ -148,9 +148,9 @@ def run_pipeline():
         save_events(events)
         log(f"Events: {len(events)} upcoming events saved")
     except Exception as e:
-        log(f"Events: skipped — {e}")
+        log(f"Events: skipped -- {e}")
 
-    # Step 3f — Fear & Greed Index
+    # Step 3f -- Fear & Greed Index
     log("Step 3f: Fetching Fear & Greed Index...")
     fear_greed = None
     try:
@@ -159,9 +159,9 @@ def run_pipeline():
         save_fear_greed(fear_greed)
         log(f"Fear & Greed: {fear_greed.get('value')} ({fear_greed.get('description')})")
     except Exception as e:
-        log(f"Fear & Greed: skipped — {e}")
+        log(f"Fear & Greed: skipped -- {e}")
 
-    # Step 3g — VIX
+    # Step 3g -- VIX
     log("Step 3g: Fetching VIX...")
     vix_data = None
     try:
@@ -170,24 +170,27 @@ def run_pipeline():
         save_vix(vix_data)
         log(f"VIX: {vix_data.get('value')} ({vix_data.get('signal')})")
     except Exception as e:
-        log(f"VIX: skipped — {e}")
+        log(f"VIX: skipped -- {e}")
 
-    # Step 3h — Congressional trades
+    # Step 3h -- Congressional trades
     log("Step 3h: Fetching congressional trades...")
-    congress_data = {}
+    congress_result = {}
     try:
         from collectors.congress_collector import get_congress_trades, save_congress_data
-        congress_data = get_congress_trades(days_back=60, max_pages=15)
-        if congress_data:
-            save_congress_data(congress_data)
-            signals = sum(1 for d in congress_data.values() if d["signal"] != "neutral")
-            log(f"Congress: {len(congress_data)} tickers tracked, {signals} active signals")
+        congress_result = get_congress_trades(days_back=60, max_pages=15)
+        if congress_result:
+            save_congress_data(congress_result)
+            # New format: {"trades": [...], "tickers": {...}}
+            tickers_data = congress_result.get("tickers", {})
+            trades_data = congress_result.get("trades", [])
+            signals = sum(1 for d in tickers_data.values() if d.get("signal") != "neutral")
+            log(f"Congress: {len(tickers_data)} tickers, {len(trades_data)} raw trades, {signals} active signals")
         else:
             log("Congress: no data available")
     except Exception as e:
-        log(f"Congress: skipped — {e}")
+        log(f"Congress: skipped -- {e}")
 
-    # Step 4 — Prices
+    # Step 4 -- Prices
     log("Step 4: Fetching prices for dynamic watchlist...")
     prices = get_price_data(dynamic_watchlist)
     save_price_data(prices)
@@ -197,7 +200,7 @@ def run_pipeline():
     if earnings_soon:
         log(f"Earnings alerts: {', '.join(p['ticker'] + ' ' + p['earnings_date'] for p in earnings_soon)}")
 
-    # Step 5 — Sentiment + Scoring
+    # Step 5 -- Sentiment + Scoring
     log("Step 5: Running sentiment analysis and scoring...")
     from nlp.sentiment import analyze_posts, aggregate_by_ticker, aggregate_stocktwits_sentiment
     from scoring.engine import compute_scores, get_sector_summary
@@ -242,6 +245,10 @@ def run_pipeline():
                            institutional_data=inst_data)
     sectors = get_sector_summary(scores)
 
+    # Count congress signals from new format
+    congress_tickers = congress_result.get("tickers", {}) if isinstance(congress_result, dict) and "tickers" in congress_result else {}
+    congress_signal_count = len([d for d in congress_tickers.values() if d.get("signal") != "neutral"])
+
     scores_file = f"data/processed/scores_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.json"
     with open(scores_file, "w") as f:
         json.dump({
@@ -249,15 +256,15 @@ def run_pipeline():
             "scores": scores,
             "sectors": sectors,
             "earnings_alerts": earnings_soon,
-            "congress_signals": len([d for d in congress_data.values() if d.get("signal") != "neutral"])
+            "congress_signals": congress_signal_count,
         }, f, indent=2, default=str)
 
     print("=" * 55)
     log("Pipeline complete!")
     if scores:
-        log(f"Top pick: {scores[0]['ticker']} — score {scores[0]['composite_score']}/100")
+        log(f"Top pick: {scores[0]['ticker']} -- score {scores[0]['composite_score']}/100")
     if sectors:
-        log(f"Top sector: {sectors[0]['sector']} — {sectors[0].get('avg_change', 0):+.2f}%")
+        log(f"Top sector: {sectors[0]['sector']} -- {sectors[0].get('avg_change', 0):+.2f}%")
     print("=" * 55)
 
     # Save daily history snapshot
@@ -270,10 +277,12 @@ def run_pipeline():
         log(f"History snapshot failed: {e}")
 
     # Save to Supabase automatically
+    # congress_result is the full {"trades": [...], "tickers": {...}} dict.
+    # db.save_congress() handles both old and new formats.
     log("Saving to Supabase...")
     try:
         import db
-        db.save_all(scores, prices, congress_data, fear_greed, vix_data)
+        db.save_all(scores, prices, congress_result, fear_greed, vix_data)
         log("Supabase save complete")
     except Exception as e:
         log(f"Supabase save failed (non-critical): {e}")
@@ -283,7 +292,7 @@ def run_pipeline():
 def start_scheduler():
     scheduler = BlockingScheduler()
     scheduler.add_job(run_pipeline, 'cron', hour=6, minute=0)
-    log("Scheduler started — pipeline runs daily at 6:00 AM")
+    log("Scheduler started -- pipeline runs daily at 6:00 AM")
     log("Press Ctrl+C to stop")
     try:
         scheduler.start()

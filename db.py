@@ -22,14 +22,14 @@ def get_client():
     if _sb is not None:
         return _sb
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        print("  ⚠ Supabase env vars not set — skipping DB save")
+        print("  Warning: Supabase env vars not set -- skipping DB save")
         return None
     try:
         from supabase import create_client
         _sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         return _sb
     except Exception as e:
-        print(f"  ⚠ Supabase connection failed: {e}")
+        print(f"  Warning: Supabase connection failed: {e}")
         return None
 
 def clean(val):
@@ -47,10 +47,6 @@ def clean_dict(d):
     return clean(d)
 
 def save_scores(scores: list, run_date: str = None) -> bool:
-    """
-    Save composite scores to Supabase scores table.
-    Called after scoring engine runs.
-    """
     sb = get_client()
     if not sb:
         return False
@@ -116,17 +112,13 @@ def save_scores(scores: list, run_date: str = None) -> bool:
 
     try:
         sb.table("scores").upsert(rows, on_conflict="date,ticker").execute()
-        print(f"  ✓ Supabase: {len(rows)} scores saved for {run_date}")
+        print(f"  OK Supabase: {len(rows)} scores saved for {run_date}")
         return True
     except Exception as e:
-        print(f"  ✗ Supabase scores save failed: {e}")
+        print(f"  FAIL Supabase scores save: {e}")
         return False
 
 def save_price_data(prices: list, run_date: str = None) -> bool:
-    """
-    Save price + fundamentals to Supabase price_data table.
-    Called after yfinance collector runs.
-    """
     sb = get_client()
     if not sb:
         return False
@@ -171,45 +163,94 @@ def save_price_data(prices: list, run_date: str = None) -> bool:
 
     try:
         sb.table("price_data").upsert(rows, on_conflict="date,ticker").execute()
-        print(f"  ✓ Supabase: {len(rows)} price rows saved for {run_date}")
+        print(f"  OK Supabase: {len(rows)} price rows saved for {run_date}")
         return True
     except Exception as e:
-        print(f"  ✗ Supabase price save failed: {e}")
+        print(f"  FAIL Supabase price save: {e}")
         return False
 
-def save_congress(congress_data: dict) -> bool:
+def save_congress(congress_result) -> bool:
     """
-    Save congressional trading signals to Supabase.
-    Clears and reinserts — always fresh data.
+    Save congressional trading data to Supabase.
+    Accepts EITHER:
+      - Old format: dict of {ticker: {...aggregated...}}
+      - New format: {"trades": [...], "tickers": {...}}
     """
     sb = get_client()
-    if not sb or not congress_data:
+    if not sb or not congress_result:
         return False
 
-    rows = []
-    for ticker, info in congress_data.items():
-        rows.append({
-            "ticker": ticker,
-            "signal": info.get("signal"),
-            "buys": info.get("buys", 0),
-            "sells": info.get("sells", 0),
-            "congress_score": info.get("congress_score"),
-            "scraped_at": datetime.utcnow().isoformat(),
-        })
+    # Detect old vs new format
+    if isinstance(congress_result, dict) and "trades" in congress_result:
+        # New format from updated congress_collector
+        tickers = congress_result.get("tickers", {})
+        raw_trades = congress_result.get("trades", [])
+    else:
+        # Old format: flat dict of ticker -> aggregated data
+        tickers = congress_result
+        raw_trades = []
 
-    try:
-        sb.table("congress_trades").delete().neq("id", 0).execute()
-        sb.table("congress_trades").insert(rows).execute()
-        print(f"  ✓ Supabase: {len(rows)} congress signals saved")
-        return True
-    except Exception as e:
-        print(f"  ✗ Supabase congress save failed: {e}")
-        return False
+    # --- Save aggregated ticker summaries (existing table) ---
+    if tickers:
+        rows = []
+        for ticker, info in tickers.items():
+            rows.append({
+                "ticker": ticker,
+                "signal": info.get("signal"),
+                "buys": info.get("buys", 0),
+                "sells": info.get("sells", 0),
+                "congress_score": info.get("congress_score"),
+                "recent_buyers": info.get("recent_buyers", []),
+                "recent_sellers": info.get("recent_sellers", []),
+                "buyer_parties": json.dumps(info.get("buyer_parties", [])),
+                "seller_parties": json.dumps(info.get("seller_parties", [])),
+                "scraped_at": datetime.utcnow().isoformat(),
+            })
+
+        try:
+            sb.table("congress_trades").delete().neq("id", 0).execute()
+            sb.table("congress_trades").insert(rows).execute()
+            print(f"  OK Supabase: {len(rows)} congress ticker signals saved")
+        except Exception as e:
+            print(f"  FAIL Supabase congress signals: {e}")
+            return False
+
+    # --- Save raw individual trades (new table) ---
+    if raw_trades:
+        raw_rows = []
+        for t in raw_trades:
+            trade_id = f"{t.get('representative', 'UNK')}_{t.get('ticker', '')}_{t.get('date', '')}_{t.get('type', '')}"
+            raw_rows.append({
+                "trade_id": trade_id,
+                "ticker": t.get("ticker", ""),
+                "issuer": t.get("issuer", ""),
+                "type": t.get("type", ""),
+                "representative": t.get("representative", ""),
+                "party": t.get("party", ""),
+                "chamber": t.get("chamber", ""),
+                "state": t.get("state", ""),
+                "owner": t.get("owner", ""),
+                "date": t.get("date", ""),
+                "pub_date": t.get("pub_date", ""),
+                "amount": t.get("amount", ""),
+                "price": t.get("price", ""),
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+
+        try:
+            # Batch upsert in chunks of 100 to avoid payload limits
+            for i in range(0, len(raw_rows), 100):
+                chunk = raw_rows[i:i + 100]
+                sb.table("congress_trades_raw").upsert(
+                    chunk, on_conflict="trade_id"
+                ).execute()
+            print(f"  OK Supabase: {len(raw_rows)} raw congress trades saved")
+        except Exception as e:
+            print(f"  FAIL Supabase raw congress trades: {e}")
+
+    return True
 
 def save_macro(fear_greed: dict, vix: dict) -> bool:
-    """
-    Save daily Fear & Greed + VIX snapshot to Supabase.
-    """
     sb = get_client()
     if not sb:
         return False
@@ -226,17 +267,18 @@ def save_macro(fear_greed: dict, vix: dict) -> bool:
 
     try:
         sb.table("macro_data").upsert(row, on_conflict="date").execute()
-        print(f"  ✓ Supabase: macro data saved for {today}")
+        print(f"  OK Supabase: macro data saved for {today}")
         return True
     except Exception as e:
-        print(f"  ✗ Supabase macro save failed: {e}")
+        print(f"  FAIL Supabase macro save: {e}")
         return False
 
-def save_all(scores: list, prices: list, congress_data: dict,
+def save_all(scores: list, prices: list, congress_data,
              fear_greed: dict = None, vix: dict = None) -> None:
     """
     Save everything to Supabase in one call.
     Called at the end of run_pipeline().
+    congress_data can be old format (dict) or new format ({"trades": [], "tickers": {}}).
     """
     run_date = str(date.today())
     print("\n  Saving to Supabase...")

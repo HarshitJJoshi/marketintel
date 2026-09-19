@@ -7,7 +7,7 @@ from datetime import datetime, date
 from dotenv import load_dotenv
 load_dotenv()
 
-# ─── Supabase client ──────────────────────────────────────────────
+# --- Supabase client ---
 from supabase import create_client, Client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
@@ -16,12 +16,12 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
         sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         test = sb.table("scores").select("ticker").limit(1).execute()
-        print(f"✓ Supabase connected — {len(test.data)} rows")
+        print(f"OK Supabase connected -- {len(test.data)} rows")
     except Exception as e:
-        print(f"⚠ Supabase connection failed: {type(e).__name__}: {e}")
+        print(f"Warning: Supabase connection failed: {type(e).__name__}: {e}")
         sb = None
 else:
-    print(f"⚠ Supabase env vars missing")
+    print(f"Warning: Supabase env vars missing")
 
 app = FastAPI(title="MarketIntel API")
 app.add_middleware(
@@ -33,7 +33,7 @@ app.add_middleware(
 
 pipeline_status = {"running": False, "last_run": None, "last_error": None}
 
-# ─── Auth helper ──────────────────────────────────────────────────
+# --- Auth helper ---
 def get_user_from_token(authorization: str):
     """Extract user_id from Supabase JWT in Authorization header."""
     if not authorization or not authorization.startswith("Bearer "):
@@ -51,7 +51,7 @@ def get_user_from_token(authorization: str):
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Auth failed: {e}")
 
-# ─── Data loading — Supabase first, JSON fallback ─────────────────
+# --- Data loading -- Supabase first, JSON fallback ---
 def get_latest_scores_from_supabase():
     try:
         today = str(date.today())
@@ -158,7 +158,7 @@ def run_pipeline_task():
     finally:
         pipeline_status["running"] = False
 
-# ─── Helpers ──────────────────────────────────────────────────────
+# --- Helpers ---
 def sanitize_floats(obj):
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
@@ -248,7 +248,7 @@ def generate_reasoning(ticker_data, price_data_map):
     elif sentiment > 0.1:
         reasons.append("positive social sentiment")
     if vol_spike > 2:
-        reasons.append(f"unusual volume ({vol_spike}x average) — institutional interest likely")
+        reasons.append(f"unusual volume ({vol_spike}x average) -- institutional interest likely")
     if buzz > 60:
         reasons.append("trending across multiple platforms")
     if revenue_growth and revenue_growth > 15:
@@ -258,55 +258,55 @@ def generate_reasoning(ticker_data, price_data_map):
     if major_institutions >= 2:
         reasons.append(f"{major_institutions} major institutions holding (Blackrock/Vanguard/Fidelity)")
     if insider_count > 0:
-        reasons.append(f"{insider_count} insider Form 4 filing(s) — management activity detected")
+        reasons.append(f"{insider_count} insider Form 4 filing(s) -- management activity detected")
     if rsi and rsi < 35:
-        reasons.append(f"RSI {rsi} — oversold, potential bounce setup")
+        reasons.append(f"RSI {rsi} -- oversold, potential bounce setup")
     if bullish_signals >= 5:
-        reasons.append(f"rare high-confluence setup — {bullish_signals}/12 signals aligned")
+        reasons.append(f"rare high-confluence setup -- {bullish_signals}/12 signals aligned")
     if not reasons:
         reasons.append("composite signal from price, sentiment and buzz")
     if sentiment < -0.1 and price_chg > 0:
-        watches.append("price rising despite bearish sentiment — could reverse")
+        watches.append("price rising despite bearish sentiment -- could reverse")
     if vol_spike > 3:
         watches.append("extreme volume spike may indicate short-term volatility")
     if mentions == 0:
-        watches.append("no social signal — driven purely by price momentum")
+        watches.append("no social signal -- driven purely by price momentum")
     if price_chg > 15:
-        watches.append("large weekly gain — watch for pullback")
+        watches.append("large weekly gain -- watch for pullback")
     if sentiment < -0.2:
         watches.append("negative crowd sentiment despite high score")
     if debt_equity and debt_equity > 2:
-        watches.append(f"high debt/equity ratio ({debt_equity}) — vulnerable to rate rises")
+        watches.append(f"high debt/equity ratio ({debt_equity}) -- vulnerable to rate rises")
     if rsi and rsi > 70:
-        watches.append(f"RSI {rsi} — overbought, momentum may slow")
+        watches.append(f"RSI {rsi} -- overbought, momentum may slow")
     if revenue_growth and revenue_growth < 0:
-        watches.append(f"negative revenue growth ({revenue_growth}%) — fundamentals weakening")
+        watches.append(f"negative revenue growth ({revenue_growth}%) -- fundamentals weakening")
     if not watches:
         watches.append("monitor for broader market shifts")
     if mentions == 0:
-        reddit_interp = "Not on Reddit's radar this week — price move is institutional or news-driven, not retail crowd."
+        reddit_interp = "Not on Reddit's radar this week -- price move is institutional or news-driven, not retail crowd."
     elif mentions <= 3:
-        reddit_interp = f"Low Reddit chatter ({mentions} mentions). Early stage — crowd hasn't piled in yet."
+        reddit_interp = f"Low Reddit chatter ({mentions} mentions). Early stage -- crowd hasn't piled in yet."
     elif mentions <= 8:
         reddit_interp = f"Moderate Reddit interest ({mentions} mentions). Growing awareness but not overcrowded."
     else:
-        reddit_interp = f"High Reddit buzz ({mentions} mentions). Crowd heavily engaged — momentum strong but watch for peak hype."
+        reddit_interp = f"High Reddit buzz ({mentions} mentions). Crowd heavily engaged -- momentum strong but watch for peak hype."
     if reddit_score > 2000:
-        reddit_interp += " Posts getting strong upvotes — high conviction from the community."
+        reddit_interp += " Posts getting strong upvotes -- high conviction from the community."
     elif reddit_score > 500:
         reddit_interp += " Decent community engagement."
     elif reddit_score < 50 and mentions > 3:
-        reddit_interp += " Mentioned often but low upvotes — could be noise."
+        reddit_interp += " Mentioned often but low upvotes -- could be noise."
     if sentiment > 0.3:
-        sentiment_interp = "Strongly bullish — very positive language around this stock."
+        sentiment_interp = "Strongly bullish -- very positive language around this stock."
     elif sentiment > 0.1:
-        sentiment_interp = "Mildly bullish — more positive than negative discussion. Supportive signal."
+        sentiment_interp = "Mildly bullish -- more positive than negative discussion. Supportive signal."
     elif sentiment > -0.1:
-        sentiment_interp = "Neutral — mixed discussion. No strong crowd conviction either way."
+        sentiment_interp = "Neutral -- mixed discussion. No strong crowd conviction either way."
     elif sentiment > -0.3:
-        sentiment_interp = "Mildly bearish — more negative than positive. Tread carefully."
+        sentiment_interp = "Mildly bearish -- more negative than positive. Tread carefully."
     else:
-        sentiment_interp = "Strongly bearish — negative crowd sentiment. Cross-check fundamentals before acting."
+        sentiment_interp = "Strongly bearish -- negative crowd sentiment. Cross-check fundamentals before acting."
     if sentiment > 0.1 and mentions > 5 and price_chg > 0:
         signal_call, signal_color = "STRONG SIGNAL", "green"
         signal_desc = "Price momentum, bullish sentiment, and Reddit buzz all aligned."
@@ -334,7 +334,7 @@ def generate_reasoning(ticker_data, price_data_map):
         "signal_color": signal_color, "signal_desc": signal_desc
     }
 
-# ─── API Endpoints ────────────────────────────────────────────────
+# --- API Endpoints ---
 @app.get("/")
 def root():
     return {"status": "ok", "message": "MarketIntel API", "supabase": sb is not None}
@@ -617,8 +617,8 @@ def get_strategies():
             "risk_level": 3, "expected_horizon": "Days to weeks", "stock_pct": 95, "etf_pct": 5,
             "description": "Picks stocks with strongest 30-day momentum and upward trend, weighted for volatility.",
             "allocations": allocations,
-            "warnings": ["High volatility — only invest what you can afford to lose",
-                "Momentum can reverse fast — set stop losses", "Check earnings dates before entering"]}
+            "warnings": ["High volatility -- only invest what you can afford to lose",
+                "Momentum can reverse fast -- set stop losses", "Check earnings dates before entering"]}
     def build_balanced():
         picks = [s for s in balanced_stocks if (s.get("composite_score") or 0) >= 50
                  and s.get("trend_direction") in ["uptrend", "sideways"]][:2]
@@ -635,7 +635,7 @@ def get_strategies():
             allocations.append({"ticker": e["ticker"], "type": "ETF", "sector": e["sector"],
                 "allocation_pct": [25, 15][i], "composite_score": e["composite_score"],
                 "week_change_pct": e["week_change_pct"],
-                "rationale": "Sector ETF — broad exposure, lower single-stock risk",
+                "rationale": "Sector ETF -- broad exposure, lower single-stock risk",
                 "horizon": "Medium to long term", "earnings_date": None})
         return {"name": "Balanced", "tagline": "Strong scores + confirmed 30d trends + ETFs",
             "risk_level": 2, "expected_horizon": "1 to 3 months", "stock_pct": 60, "etf_pct": 40,
@@ -652,7 +652,7 @@ def get_strategies():
             allocations.append({"ticker": e["ticker"], "type": "ETF", "sector": e["sector"],
                 "allocation_pct": [40, 30, 20][i], "composite_score": e["composite_score"],
                 "week_change_pct": e["week_change_pct"],
-                "rationale": "Diversified ETF — broad market exposure, reduced risk",
+                "rationale": "Diversified ETF -- broad market exposure, reduced risk",
                 "horizon": "Long term (6+ months)", "earnings_date": None})
         if picks:
             t = picks[0]
@@ -666,7 +666,7 @@ def get_strategies():
             "risk_level": 1, "expected_horizon": "6+ months", "stock_pct": 10, "etf_pct": 90,
             "description": "ETF-heavy with one low-volatility stock filtered for low beta and confirmed trend.",
             "allocations": allocations,
-            "warnings": ["Lower upside — designed for stability", "Best held 6+ months", "Still subject to broad market drawdowns"]}
+            "warnings": ["Lower upside -- designed for stability", "Best held 6+ months", "Still subject to broad market drawdowns"]}
     return sanitize_floats({"generated_at": data["generated_at"],
         "strategies": [build_aggressive(), build_balanced(), build_conservative()]})
 
@@ -739,36 +739,93 @@ def get_events(days: int = 14):
 
 @app.get("/api/congress")
 def get_congress():
-    """Return congressional trading signals from Supabase."""
-    if not sb:
-        return {"trades": [], "tickers": []}
-    try:
-        result = sb.table("congress_trades").select("*").execute()
-        rows = result.data or []
-        tickers = {}
-        for r in rows:
-            t = r["ticker"]
-            if t not in tickers:
-                tickers[t] = {
-                    "ticker": t,
+    """
+    Return congressional trading data: cluster summaries for cards,
+    raw individual trades for the transactions table.
+    Supabase first, JSON fallback.
+    """
+    clusters_buying = []
+    clusters_selling = []
+    trades = []
+
+    # --- Try Supabase ---
+    if sb:
+        try:
+            # Aggregated ticker signals (for cluster cards)
+            agg_result = sb.table("congress_trades").select("*").execute()
+            for r in (agg_result.data or []):
+                signal = r.get("signal", "neutral")
+                entry = {
+                    "ticker": r.get("ticker"),
                     "buys": r.get("buys", 0),
                     "sells": r.get("sells", 0),
-                    "signal": r.get("signal"),
-                    "congress_score": r.get("congress_score"),
+                    "signal": signal,
+                    "congress_score": r.get("congress_score", 50),
+                    "recent_buyers": r.get("recent_buyers", []),
+                    "recent_sellers": r.get("recent_sellers", []),
                 }
-        return {
-            "trades": rows,
-            "tickers": list(tickers.values()),
-            "total": len(rows),
-        }
-    except Exception as e:
-        print(f"Congress fetch failed: {e}")
-        return {"trades": [], "tickers": []}
+                if signal in ("strong_buy_cluster", "buy_cluster", "bullish"):
+                    clusters_buying.append(entry)
+                elif signal in ("sell_cluster", "bearish"):
+                    clusters_selling.append(entry)
 
-# ─── Watchlist — Supabase-backed, per-user ───────────────────────
+            # Raw individual trades (for transactions table)
+            raw_result = (
+                sb.table("congress_trades_raw")
+                .select("*")
+                .order("date", desc=True)
+                .limit(200)
+                .execute()
+            )
+            trades = raw_result.data or []
+
+        except Exception as e:
+            print(f"Congress Supabase fetch failed: {e}")
+
+    # --- JSON fallback ---
+    if not trades:
+        try:
+            with open("data/processed/congress_trades.json") as f:
+                data = json.load(f)
+
+            # Raw trades from new collector format
+            trades = data.get("trades", [])
+
+            # Build clusters from aggregated tickers
+            for ticker, info in data.get("tickers", {}).items():
+                signal = info.get("signal", "neutral")
+                entry = {
+                    "ticker": ticker,
+                    "buys": info.get("buys", 0),
+                    "sells": info.get("sells", 0),
+                    "signal": signal,
+                    "congress_score": info.get("congress_score", 50),
+                    "recent_buyers": info.get("recent_buyers", []),
+                    "recent_sellers": info.get("recent_sellers", []),
+                }
+                if signal in ("strong_buy_cluster", "buy_cluster", "bullish"):
+                    clusters_buying.append(entry)
+                elif signal in ("sell_cluster", "bearish"):
+                    clusters_selling.append(entry)
+        except Exception:
+            pass
+
+    # Sort clusters by score
+    clusters_buying.sort(key=lambda x: x.get("congress_score", 0), reverse=True)
+    clusters_selling.sort(key=lambda x: x.get("congress_score", 100))
+
+    return {
+        "clusters": {
+            "buying": clusters_buying,
+            "selling": clusters_selling,
+        },
+        "trades": trades,
+        "trade_count": len(trades),
+    }
+
+# --- Watchlist -- Supabase-backed, per-user ---
 @app.get("/api/watchlist")
 def get_watchlist(authorization: str = Header(None)):
-    """Return current user's watchlist tickers from Supabase."""
     if not sb:
         return {"tickers": []}
     try:
@@ -784,7 +841,6 @@ def get_watchlist(authorization: str = Header(None)):
 
 @app.post("/api/watchlist/{ticker}")
 def add_to_watchlist(ticker: str, authorization: str = Header(None)):
-    """Add ticker to current user's watchlist. Validates via yfinance first."""
     if not sb:
         return {"success": False, "error": "Database unavailable"}
     ticker = ticker.upper().strip()
@@ -804,7 +860,7 @@ def add_to_watchlist(ticker: str, authorization: str = Header(None)):
                 raise
         return {
             "success": True, "ticker": ticker,
-            "message": f"{ticker} added — will appear in history after next pipeline run",
+            "message": f"{ticker} added -- will appear in history after next pipeline run",
         }
     except HTTPException:
         raise
@@ -813,7 +869,6 @@ def add_to_watchlist(ticker: str, authorization: str = Header(None)):
 
 @app.delete("/api/watchlist/{ticker}")
 def remove_from_watchlist(ticker: str, authorization: str = Header(None)):
-    """Remove ticker from current user's watchlist."""
     if not sb:
         return {"success": False}
     ticker = ticker.upper().strip()
