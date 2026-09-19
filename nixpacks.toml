@@ -1,0 +1,5 @@
+[phases.setup]
+aptPkgs = ["chromium", "libnss3", "libatk-bridge2.0-0", "libdrm2", "libxcomposite1", "libxrandr2", "libgbm1", "libasound2", "libxdamage1", "libxfixes3", "libcups2", "libpango-1.0-0", "libcairo2"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt", "playwright install chromium"]
