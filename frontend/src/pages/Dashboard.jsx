@@ -4,6 +4,7 @@ import UserMenu from '../components/UserMenu'
 import { useAuth } from '../context/AuthContext'
 import ProGate from '../components/ProGate'
 import axios from "axios"
+import CongressTab from '../components/CongressTab'
 
 const API = "https://marketintel-production-e203.up.railway.app"
 const fmt = (n, d = 2) => (n != null && !Number.isNaN(Number(n))) ? Number(n).toFixed(d) : "—"
@@ -19,7 +20,6 @@ const pct = (n, signed = true) => {
   return `${signed && v > 0 ? "+" : ""}${v.toFixed(2)}%`
 }
 
-// ─── Design tokens — warm dark, minimal accents ──────────────────
 const C = {
   bg: "#181a1b",
   surface: "#1f2223",
@@ -50,7 +50,6 @@ const S = {
 const changeColor = (v) => (v == null || v === 0) ? C.textMuted : v > 0 ? C.green : C.red
 const scoreColor = (v) => v >= 60 ? C.green : v >= 45 ? C.amber : C.red
 
-// ─── Primitives ──────────────────────────────────────────────────
 function Sparkline({ data, width = 120, height = 30, color }) {
   if (!data || data.length < 2) return <div style={{ height }} />
   const clean = data.filter(v => v != null && !Number.isNaN(v))
@@ -199,7 +198,6 @@ function HistoryChart({ history, width = 520, height = 120 }) {
   )
 }
 
-// ─── Modal ───────────────────────────────────────────────────────
 function Modal({ ticker, data, allScores, isPro, onClose }) {
   const [detail, setDetail] = useState(null)
   const [history, setHistory] = useState(null)
@@ -233,7 +231,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
         background: C.surface, borderRadius: 12, width: "100%", maxWidth: 620,
         maxHeight: "92vh", overflowY: "auto", border: `1px solid ${C.border}`,
       }}>
-        {/* Header */}
         <div style={{
           padding: "18px 24px 14px", borderBottom: `1px solid ${C.border}`,
           display: "flex", justifyContent: "space-between", alignItems: "flex-start",
@@ -272,7 +269,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
         </div>
 
         <div style={{ padding: "18px 24px" }}>
-          {/* Sparkline + range */}
           {priceHistory.length > 1 && (
             <div style={{ marginBottom: 18 }}>
               <Sparkline data={priceHistory} width={560} height={54} />
@@ -280,7 +276,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           )}
 
-          {/* Key stats — two column ledger */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 32, marginBottom: 20 }}>
             <div>
               <Row label="Market cap" value={fmtCap(t.market_cap || p.market_cap)} />
@@ -308,7 +303,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           ) : (<>
 
-          {/* Analyst / Short / Congress */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
             <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px" }}>
               <div style={{ ...S.label, marginBottom: 8 }}>Analyst</div>
@@ -364,7 +358,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           </div>
 
-          {/* Confluence */}
           {t.bullish_signals != null && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
@@ -385,7 +378,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           )}
 
-          {/* Signal breakdown */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ ...S.label, marginBottom: 10 }}>Signal breakdown</div>
             <SignalBar label="Price momentum" value={t.price_score} />
@@ -402,13 +394,11 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             <SignalBar label="Options flow" value={t.options_score} />
           </div> </>)}
 
-          {/* Score history */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ ...S.label, marginBottom: 8 }}>Score history</div>
             <HistoryChart history={history} />
           </div>
 
-          {/* Interpretation — pro only */}
           {isPro && r.signal_call && (
             <div style={{ marginBottom: 20 }}>
               <div style={{
@@ -422,15 +412,14 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
                 <div style={{ fontSize: 12.5, color: C.textMuted, lineHeight: 1.55 }}>{r.signal_desc}</div>
               </div>
               <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.6, marginBottom: 6 }}>
-                <span style={{ color: C.textDim }}>Social — </span>{r.reddit_interp}
+                <span style={{ color: C.textDim }}>Social -- </span>{r.reddit_interp}
               </div>
               <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.6 }}>
-                <span style={{ color: C.textDim }}>Sentiment — </span>{r.sentiment_interp}
+                <span style={{ color: C.textDim }}>Sentiment -- </span>{r.sentiment_interp}
               </div>
             </div>
           )}
 
-          {/* Thesis + reasons — teaser for free, full for pro */}
           {(r.thesis || r.reasons?.length > 0) && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...S.label, marginBottom: 8 }}>Why this ranks</div>
@@ -464,19 +453,17 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           )}
 
-          {/* Watch-outs — pro only */}
           {isPro && (r.watches || []).filter(w => w !== "monitor for broader market shifts").length > 0 && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...S.label, marginBottom: 8 }}>Risks</div>
               {r.watches.map((w, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, fontSize: 12, color: C.textMuted, marginBottom: 5, lineHeight: 1.5 }}>
-                  <span style={{ color: C.amber, flexShrink: 0 }}>–</span>{w}
+                  <span style={{ color: C.amber, flexShrink: 0 }}>-</span>{w}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Related */}
           {(r.related_etfs?.length > 0 || r.watch_also?.length > 0) && (
             <div style={{ display: "flex", gap: 24, marginBottom: 20, flexWrap: "wrap" }}>
               {r.related_etfs?.length > 0 && (
@@ -508,7 +495,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           )}
 
-          {/* Earnings note */}
           {(t.earnings_date || p.earnings_date) && (
             <div style={{
               fontSize: 12, color: C.amber, marginBottom: 20,
@@ -518,7 +504,6 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
             </div>
           )}
 
-          {/* News */}
           {headlines.length > 0 && (
             <div>
               <div style={{ ...S.label, marginBottom: 10 }}>Recent news</div>
@@ -539,12 +524,10 @@ function Modal({ ticker, data, allScores, isPro, onClose }) {
   )
 }
 
-// ─── Ticker Card ─────────────────────────────────────────────────
 function TickerCard({ t, rank, onClick }) {
   const congressActive = t.congress_signal && !["neutral", "no_data"].includes(t.congress_signal)
   const congressBuy = congressActive && (t.congress_signal.includes("buy") || t.congress_signal === "bullish")
 
-  // Pick ONE most important secondary signal
   let signal = null
   if (congressActive) signal = { text: `Congress ${congressBuy ? "buying" : "selling"}`, tone: congressBuy ? "green" : "red" }
   else if (t.volume_spike > 2) signal = { text: `${t.volume_spike}x volume`, tone: "amber" }
@@ -583,7 +566,6 @@ function TickerCard({ t, rank, onClick }) {
   )
 }
 
-// ─── Filters ─────────────────────────────────────────────────────
 const FILTERS = [
   { id: "congress_buy", label: "Congress buying", test: t => t.congress_signal && ["bullish", "buy_cluster", "strong_buy_cluster"].includes(t.congress_signal) },
   { id: "congress_sell", label: "Congress selling", test: t => t.congress_signal && ["bearish", "sell_cluster", "strong_sell_cluster"].includes(t.congress_signal) },
@@ -681,140 +663,6 @@ function FilterBar({ allScores, activeFilters, setActiveFilters, sortBy, setSort
   )
 }
 
-// ─── Congress Tab ────────────────────────────────────────────────
-function CongressTab({ allScores, onTickerClick }) {
-  const [congressData, setCongressData] = useState(null)
-
-  useEffect(() => {
-    axios.get(`${API}/api/congress`).then(r => setCongressData(r.data)).catch(() => setCongressData({ trades: [] }))
-  }, [])
-
-  // Aggregate view from scores
-  const withCongress = allScores
-    .filter(t => t.congress_signal && !["neutral", "no_data"].includes(t.congress_signal))
-    .sort((a, b) => ((b.congress_buys || 0) + (b.congress_sells || 0)) - ((a.congress_buys || 0) + (a.congress_sells || 0)))
-
-  const buying = withCongress.filter(t => ["bullish", "buy_cluster", "strong_buy_cluster"].includes(t.congress_signal))
-  const selling = withCongress.filter(t => ["bearish", "sell_cluster", "strong_sell_cluster"].includes(t.congress_signal))
-
-  const trades = congressData?.trades || []
-
-  return (
-    <div>
-      <div style={{ marginBottom: "1.75rem" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>Congressional trading</div>
-        <div style={{ fontSize: 12.5, color: C.textMuted }}>
-          STOCK Act disclosures from Capitol Trades, last 60 days. Signals derive from buy and sell clusters across members.
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: "1.75rem" }}>
-        {/* Buying */}
-        <div style={{ ...S.card, padding: "16px 20px" }}>
-          <div style={{ ...S.label, color: C.green, marginBottom: 12 }}>
-            Cluster buying — {buying.length} tickers
-          </div>
-          {buying.length === 0 ? (
-            <div style={{ fontSize: 12, color: C.textDim }}>No active buy clusters</div>
-          ) : buying.map(t => (
-            <div key={t.ticker} onClick={() => onTickerClick(t.ticker)} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "9px 0", borderBottom: `1px solid ${C.borderSubtle}`, cursor: "pointer",
-            }}>
-              <div>
-                <span style={{ fontSize: 13, fontWeight: 650, color: C.text }}>{t.ticker}</span>
-                <span style={{ fontSize: 11, color: C.textDim, marginLeft: 8 }}>{t.sector}</span>
-                {t.congress_buyers?.length > 0 && (
-                  <div style={{ fontSize: 10.5, color: C.textDim, marginTop: 2 }}>
-                    {t.congress_buyers.slice(0, 3).join(", ")}
-                  </div>
-                )}
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ ...S.num, fontSize: 12.5, fontWeight: 600 }}>
-                  <span style={{ color: C.green }}>{t.congress_buys || 0}B</span>
-                  <span style={{ color: C.textDim }}> / </span>
-                  <span style={{ color: C.red }}>{t.congress_sells || 0}S</span>
-                </div>
-                <div style={{ fontSize: 10.5, color: changeColor(t.week_change_pct), marginTop: 2, ...S.num }}>
-                  {pct(t.week_change_pct)} 1W
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Selling */}
-        <div style={{ ...S.card, padding: "16px 20px" }}>
-          <div style={{ ...S.label, color: C.red, marginBottom: 12 }}>
-            Cluster selling — {selling.length} tickers
-          </div>
-          {selling.length === 0 ? (
-            <div style={{ fontSize: 12, color: C.textDim }}>No active sell clusters</div>
-          ) : selling.map(t => (
-            <div key={t.ticker} onClick={() => onTickerClick(t.ticker)} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "9px 0", borderBottom: `1px solid ${C.borderSubtle}`, cursor: "pointer",
-            }}>
-              <div>
-                <span style={{ fontSize: 13, fontWeight: 650, color: C.text }}>{t.ticker}</span>
-                <span style={{ fontSize: 11, color: C.textDim, marginLeft: 8 }}>{t.sector}</span>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ ...S.num, fontSize: 12.5, fontWeight: 600 }}>
-                  <span style={{ color: C.green }}>{t.congress_buys || 0}B</span>
-                  <span style={{ color: C.textDim }}> / </span>
-                  <span style={{ color: C.red }}>{t.congress_sells || 0}S</span>
-                </div>
-                <div style={{ fontSize: 10.5, color: changeColor(t.week_change_pct), marginTop: 2, ...S.num }}>
-                  {pct(t.week_change_pct)} 1W
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Individual trades feed if API provides them */}
-      {trades.length > 0 && (
-        <div style={{ ...S.card, padding: "16px 20px" }}>
-          <div style={{ ...S.label, marginBottom: 12 }}>Recent transactions</div>
-          <div style={{
-            display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
-            gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.border}`,
-          }}>
-            {["Member", "Ticker", "Type", "Date", "Amount"].map(h => (
-              <span key={h} style={{ ...S.label, fontSize: 10 }}>{h}</span>
-            ))}
-          </div>
-                    {trades.slice(0, 30).map((tr, i) => (
-            <div key={i} style={{
-              display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
-              gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.borderSubtle}`,
-              alignItems: "center",
-            }}>
-              <span style={{ fontSize: 12.5, color: C.text }}>
-                {tr.representative}
-                {tr.party && <Chip tone={tr.party === "Republican" ? "rep" : "dem"} style={{ marginLeft: 6 }}>{tr.party?.[0]}</Chip>}
-              </span>
-              <button onClick={() => onTickerClick(tr.ticker)} style={{
-                background: "none", border: "none", cursor: "pointer", textAlign: "left",
-                fontSize: 12.5, fontWeight: 650, color: C.accent, padding: 0, ...S.num,
-              }}>{tr.ticker}</button>
-              <span style={{ fontSize: 12, fontWeight: 600, color: tr.type === "buy" ? C.green : C.red }}>
-                {tr.type?.toUpperCase()}
-              </span>
-              <span style={{ fontSize: 11.5, color: C.textMuted, ...S.num }}>{tr.date}</span>
-              <span style={{ fontSize: 11.5, color: C.textMuted }}>{tr.amount || "—"}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── History Tab ─────────────────────────────────────────────────
 function HistoryTab({ onTickerClick }) {
   const [allHistory, setAllHistory] = useState(null)
   const [search, setSearch] = useState("")
@@ -876,7 +724,6 @@ function HistoryTab({ onTickerClick }) {
           }} />
       </div>
 
-      {/* Watchlist */}
       {watchlist.length > 0 && (
         <div style={{ marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={S.label}>Watchlist</span>
@@ -897,7 +744,6 @@ function HistoryTab({ onTickerClick }) {
         </div>
       )}
 
-      {/* Ticker pills */}
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: "1.5rem" }}>
         {filtered.map(t => {
           const hist = allHistory[t]
@@ -922,7 +768,7 @@ function HistoryTab({ onTickerClick }) {
         <div style={{ ...S.card, padding: "2rem", textAlign: "center", marginBottom: "1.5rem" }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6, ...S.num }}>{search.toUpperCase()}</div>
           <div style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 14 }}>
-            Not tracked yet — add to watchlist to include in the next pipeline run
+            Not tracked yet - add to watchlist to include in the next pipeline run
           </div>
           {addStatus === "idle" && (
             <button onClick={() => handleAdd(search.toUpperCase())} style={{
@@ -968,7 +814,6 @@ function HistoryTab({ onTickerClick }) {
   )
 }
 
-// ─── Strategies Tab ──────────────────────────────────────────────
 function StrategiesTab({ onTickerClick }) {
   const [strategies, setStrategies] = useState(null)
   const [amount, setAmount] = useState(1000)
@@ -989,7 +834,7 @@ function StrategiesTab({ onTickerClick }) {
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>Model portfolios</div>
           <div style={{ fontSize: 12.5, color: C.textMuted }}>
-            Built from live signals — volatility, beta and 30-day trend determine allocation. Not financial advice.
+            Built from live signals - volatility, beta and 30-day trend determine allocation. Not financial advice.
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1064,7 +909,7 @@ function StrategiesTab({ onTickerClick }) {
             <div style={{ ...S.label, marginBottom: 10 }}>Considerations</div>
             {strategy.warnings.map((w, i) => (
               <div key={i} style={{ display: "flex", gap: 8, fontSize: 11.5, color: C.textMuted, marginBottom: 7, lineHeight: 1.45 }}>
-                <span style={{ color: C.amber, flexShrink: 0 }}>–</span>{w}
+                <span style={{ color: C.amber, flexShrink: 0 }}>-</span>{w}
               </div>
             ))}
           </div>
@@ -1074,13 +919,11 @@ function StrategiesTab({ onTickerClick }) {
   )
 }
 
-// ─── Events Sidebar ──────────────────────────────────────────────
 function EventsSidebar() {
   const [events, setEvents] = useState(null)
   useEffect(() => { axios.get(`${API}/api/events`).then(r => setEvents(r.data.events)).catch(() => setEvents([])) }, [])
   if (!events) return null
 
-  // Group by date
   const grouped = events.reduce((acc, e) => {
     (acc[e.date] = acc[e.date] || []).push(e)
     return acc
@@ -1113,14 +956,11 @@ function EventsSidebar() {
   )
 }
 
-// ─── Sector Heatmap ──────────────────────────────────────────────
-// Color intensity by % change. Hover to pop out the cell.
 function heatColor(pct) {
   if (pct == null || Number.isNaN(pct)) return C.surfaceAlt
   const v = Math.max(-8, Math.min(8, pct))
   const intensity = Math.abs(v) / 8
   if (v > 0) {
-    // green scale: darker green as more positive
     return `rgba(34, 192, 122, ${0.12 + intensity * 0.55})`
   } else if (v < 0) {
     return `rgba(229, 72, 77, ${0.12 + intensity * 0.55})`
@@ -1176,10 +1016,8 @@ function HeatCell({ t, onClick }) {
 }
 
 function SectorHeatmap({ sectors, allScores, onTickerClick }) {
-  // Sort sectors by average change desc
   const sortedSectors = [...sectors].sort((a, b) => b.avg_change - a.avg_change)
 
-  // Build ticker list per sector from allScores (more complete than top_5)
   const tickersBySector = {}
   allScores.forEach(t => {
     const s = t.sector || "Other"
@@ -1187,7 +1025,6 @@ function SectorHeatmap({ sectors, allScores, onTickerClick }) {
     tickersBySector[s].push(t)
   })
 
-  // Sort each sector's tickers by absolute % change (biggest movers first)
   Object.keys(tickersBySector).forEach(s => {
     tickersBySector[s].sort((a, b) => Math.abs(b.week_change_pct || 0) - Math.abs(a.week_change_pct || 0))
   })
@@ -1229,7 +1066,6 @@ function SectorHeatmap({ sectors, allScores, onTickerClick }) {
   )
 }
 
-// ─── App ─────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [data, setData] = useState(null)
   const [allScores, setAllScores] = useState([])
@@ -1296,7 +1132,6 @@ export default function Dashboard() {
         <Modal ticker={selectedTicker} data={data} allScores={allScores} isPro={isPro} onClose={handleModalClose} />
       )}
 
-      {/* Top bar */}
       <div style={{
         borderBottom: `1px solid ${C.border}`, padding: "0 2rem",
         display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -1317,7 +1152,6 @@ export default function Dashboard() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          {/* Macro inline */}
           {fg?.value != null && (
             <span style={{ fontSize: 11.5, color: C.textMuted }}>
               Fear & Greed{" "}
@@ -1354,12 +1188,11 @@ export default function Dashboard() {
           isPro ? <StrategiesTab onTickerClick={handleTickerClick} />
                 : <ProGate feature="portfolio strategies" variant="solid" />
         ) : activeTab === "congress" ? (
-          isPro ? <CongressTab allScores={allScores} onTickerClick={handleTickerClick} />
+          isPro ? <CongressTab />
                 : <ProGate feature="the Congress tab" variant="solid" />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 250px", gap: 28, alignItems: "start" }}>
             <div>
-              {/* Summary strip */}
               <div style={{
                 display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 0,
                 marginBottom: "1.75rem", ...S.card, padding: "16px 0",
@@ -1385,7 +1218,6 @@ export default function Dashboard() {
                 ))}
               </div>
 
-              {/* Filters */}
               {isPro ? (
                 <FilterBar
                   allScores={allScores.filter(t => !t.is_etf)}
@@ -1401,7 +1233,6 @@ export default function Dashboard() {
 
               {activeFilters.length === 0 && (
                 <>
-                  {/* Top stocks */}
                   <section style={{ marginBottom: "1.75rem" }}>
                     <div style={{ ...S.label, marginBottom: 12 }}>Top stocks</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10 }}>
@@ -1411,7 +1242,6 @@ export default function Dashboard() {
                     </div>
                   </section>
 
-                  {/* Top ETFs */}
                   <section style={{ marginBottom: "1.75rem" }}>
                     <div style={{ ...S.label, marginBottom: 12 }}>Top ETFs</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10 }}>
@@ -1421,13 +1251,12 @@ export default function Dashboard() {
                     </div>
                   </section>
 
-                  {/* Sector heatmap */}
                   <section style={{ ...S.card, padding: "18px 22px" }}>
                     <div style={{
                       display: "flex", justifyContent: "space-between",
                       alignItems: "baseline", marginBottom: 14,
                     }}>
-                      <div style={S.label}>Sector heatmap — 1 week</div>
+                      <div style={S.label}>Sector heatmap - 1 week</div>
                       <div style={{ fontSize: 10.5, color: C.textDim }}>Hover to expand · click to open</div>
                     </div>
                     <SectorHeatmap sectors={data.sectors} allScores={allScores} onTickerClick={handleTickerClick} />
