@@ -218,8 +218,8 @@ def save_congress(congress_result) -> bool:
     # --- Save raw individual trades (new table) ---
     if raw_trades:
         raw_rows = []
-        for t in raw_trades:
-            trade_id = f"{t.get('representative', 'UNK')}_{t.get('ticker', '')}_{t.get('date', '')}_{t.get('type', '')}"
+        for i, t in enumerate(raw_trades):
+            trade_id = f"{t.get('representative', 'UNK')}_{t.get('ticker', '')}_{t.get('date', '')}_{t.get('type', '')}_{i}"
             raw_rows.append({
                 "trade_id": trade_id,
                 "ticker": t.get("ticker", ""),

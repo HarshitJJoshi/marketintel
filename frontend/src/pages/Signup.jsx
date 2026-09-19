@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const C = {
-  bg: "#181a1b", surface: "#1f2223", surfaceAlt: "#26292b", border: "#2e3234",
+  bg: "#0f1112", surface: "#181a1b", surfaceAlt: "#1f2223", border: "#2a2d2f",
   text: "#ececec", textMuted: "#9ba1a6", textDim: "#5f6568",
   accent: "#4cc2c9", green: "#22c07a", red: "#e5484d",
 }
@@ -28,7 +28,6 @@ export default function Signup() {
       setError(error.message)
       setLoading(false)
     } else if (data.user && !data.session) {
-      // Email confirmation required
       setConfirmSent(true)
       setLoading(false)
     } else {
@@ -53,12 +52,12 @@ export default function Signup() {
       padding: '2rem',
     }}>
       <div style={{
-        maxWidth: 380, background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`,
-        padding: '32px 28px', textAlign: 'center',
+        maxWidth: 400, background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`,
+        padding: '36px 32px', textAlign: 'center',
       }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: C.green }}>Check your inbox</h1>
-        <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.5 }}>
-          We sent a confirmation link to <span style={{ color: C.text }}>{email}</span>. Click it to activate your account.
+        <h1 style={{ fontSize: 20, fontWeight: 750, marginBottom: 10, color: C.green }}>Check your inbox</h1>
+        <p style={{ fontSize: 13.5, color: C.textMuted, lineHeight: 1.55 }}>
+          We sent a confirmation link to <span style={{ color: C.text, fontWeight: 600 }}>{email}</span>. Click it to activate your account.
         </p>
       </div>
     </div>
@@ -71,22 +70,22 @@ export default function Signup() {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       padding: '2rem',
     }}>
-      <Link to="/" style={{ textDecoration: 'none', color: C.text, marginBottom: 40, fontSize: 18, fontWeight: 700 }}>
+      <Link to="/" style={{ textDecoration: 'none', color: C.text, marginBottom: 48, fontSize: 20, fontWeight: 750, letterSpacing: '-0.3px' }}>
         MarketIntel
       </Link>
 
       <div style={{
-        width: '100%', maxWidth: 380, background: C.surface,
-        borderRadius: 12, border: `1px solid ${C.border}`, padding: '32px 28px',
+        width: '100%', maxWidth: 400, background: C.surface,
+        borderRadius: 14, border: `1px solid ${C.border}`, padding: '36px 32px',
       }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6, letterSpacing: '-0.3px' }}>Create account</h1>
-        <p style={{ fontSize: 13, color: C.textMuted, marginBottom: 24 }}>Get free access to daily market signals</p>
+        <h1 style={{ fontSize: 22, fontWeight: 750, marginBottom: 6, letterSpacing: '-0.3px' }}>Create account</h1>
+        <p style={{ fontSize: 13.5, color: C.textMuted, marginBottom: 28 }}>Get free access to daily market signals</p>
 
         <button onClick={handleGoogleSignup} style={{
-          width: '100%', padding: '10px 14px', border: `1px solid ${C.border}`,
+          width: '100%', padding: '11px 14px', border: `1px solid ${C.border}`,
           background: C.surfaceAlt, color: C.text, borderRadius: 8, fontSize: 13.5, fontWeight: 550,
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          marginBottom: 18,
+          marginBottom: 20,
         }}>
           <svg width="16" height="16" viewBox="0 0 48 48">
             <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/>
@@ -97,41 +96,41 @@ export default function Signup() {
           Continue with Google
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ flex: 1, height: 1, background: C.border }} />
-          <span style={{ fontSize: 11, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>or</span>
+          <span style={{ fontSize: 10.5, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>or</span>
           <div style={{ flex: 1, height: 1, background: C.border }} />
         </div>
 
         <form onSubmit={handleEmailSignup}>
           <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required
             style={{
-              width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 7,
-              background: C.bg, color: C.text, fontSize: 13, marginBottom: 10, outline: 'none',
+              width: '100%', padding: '10px 14px', border: `1px solid ${C.border}`, borderRadius: 8,
+              background: C.bg, color: C.text, fontSize: 13.5, marginBottom: 10, outline: 'none',
               boxSizing: 'border-box',
             }} />
           <input type="password" placeholder="Password (min 6 chars)" value={password} onChange={e => setPassword(e.target.value)} required minLength={6}
             style={{
-              width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: 7,
-              background: C.bg, color: C.text, fontSize: 13, marginBottom: 14, outline: 'none',
+              width: '100%', padding: '10px 14px', border: `1px solid ${C.border}`, borderRadius: 8,
+              background: C.bg, color: C.text, fontSize: 13.5, marginBottom: 16, outline: 'none',
               boxSizing: 'border-box',
             }} />
 
           {error && (
-            <div style={{ fontSize: 12, color: C.red, marginBottom: 14, padding: '8px 10px', background: 'rgba(229,72,77,0.08)', borderRadius: 6 }}>
+            <div style={{ fontSize: 12.5, color: C.red, marginBottom: 16, padding: '10px 12px', background: 'rgba(229,72,77,0.08)', borderRadius: 7 }}>
               {error}
             </div>
           )}
 
           <button type="submit" disabled={loading} style={{
-            width: '100%', padding: '10px', background: C.accent, color: C.bg,
-            border: 'none', borderRadius: 7, fontSize: 13.5, fontWeight: 650, cursor: loading ? 'default' : 'pointer',
+            width: '100%', padding: '11px', background: C.accent, color: C.bg,
+            border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 650, cursor: loading ? 'default' : 'pointer',
             opacity: loading ? 0.6 : 1,
-          }}>{loading ? 'Creating account' : 'Create account'}</button>
+          }}>{loading ? 'Creating account...' : 'Create account'}</button>
         </form>
 
-        <div style={{ fontSize: 12, color: C.textMuted, textAlign: 'center', marginTop: 20 }}>
-          Already have an account? <Link to="/login" style={{ color: C.accent, textDecoration: 'none', fontWeight: 550 }}>Log in</Link>
+        <div style={{ fontSize: 12.5, color: C.textMuted, textAlign: 'center', marginTop: 24 }}>
+          Already have an account? <Link to="/login" style={{ color: C.accent, textDecoration: 'none', fontWeight: 600 }}>Log in</Link>
         </div>
       </div>
     </div>
