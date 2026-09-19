@@ -48,7 +48,8 @@ def get_all_watchlist_tickers():
 def run_pipeline():
     log("Starting MarketIntel daily pipeline...")
     print("=" * 55)
-
+    os.makedirs("data/raw", exist_ok=True)
+    os.makedirs("data/processed", exist_ok=True)
     cleanup_old_files()
 
     # Step 1 -- Reddit
