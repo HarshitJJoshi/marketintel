@@ -12,10 +12,14 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
 MONTH_MAP = {
     "Jan": "01", "Feb": "02", "Mar": "03", "Apr": "04",
     "May": "05", "Jun": "06", "Jul": "07", "Aug": "08",
-    "Sep": "09", "Sept": "09", "Oct": "10", "Nov": "11", "Dec": "12",
+    "Sep": "09", "Oct": "10", "Nov": "11", "Dec": "12",
 }
 
 PARTIES = {"Republican", "Democrat", "Independent"}
@@ -24,9 +28,13 @@ BUY_TYPES = {"buy", "purchase", "exchange"}
 SELL_TYPES = {"sell", "sale"}
 
 
+# ---------------------------------------------------------------------------
+# Parsing helpers
+# ---------------------------------------------------------------------------
+
 def _parse_date(text):
-    """Extract a YYYY-MM-DD date from '25 Jun 2026' or '7 Sept 2026' style strings."""
-    m = re.search(r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{4})", text)
+    """Extract a YYYY-MM-DD date from '25 Jun 2026' style strings."""
+    m = re.search(r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})", text)
     if not m:
         return ""
     day, month, year = m.groups()
@@ -37,11 +45,14 @@ def _parse_size(text):
     """
     Extract the dollar-range bucket from a cell.
     Capitol Trades shows ranges like '1K-15K', '15K-50K', '50K-100K', etc.
+    The dash can be an ASCII hyphen or an en-dash.
     """
+    # Normalize en-dashes / em-dashes to hyphens
     text = text.replace("\u2013", "-").replace("\u2014", "-")
     m = re.search(r"(\d+K?)\s*-\s*(\d+K?)", text, re.IGNORECASE)
     if m:
         return f"${m.group(1)}-${m.group(2)}"
+    # Single value like '>1M' or '>5M'
     m2 = re.search(r"(>?\$?\d+[KMB])", text, re.IGNORECASE)
     if m2:
         return m2.group(1)
@@ -51,8 +62,7 @@ def _parse_size(text):
 def _parse_politician_cell(cell_text):
     """
     The politician cell stacks: Name, Party, Chamber, State (newline-separated).
-    Example inner_text: 'Lisa McClain\nRepublicanHouseMI' or 'Lisa McClain\nRepublican\nHouse\nMI'
-    Some cells concatenate party+chamber+state without newlines.
+    Example inner_text: 'Lisa McClain\nRepublican\nHouse\nMI'
     """
     lines = [ln.strip() for ln in cell_text.strip().split("\n") if ln.strip()]
     name = lines[0] if lines else ""
@@ -61,27 +71,12 @@ def _parse_politician_cell(cell_text):
     state = ""
 
     for ln in lines[1:]:
-        # Handle concatenated format like "RepublicanHouseOH"
-        for p in PARTIES:
-            if ln.startswith(p):
-                party = p
-                remainder = ln[len(p):]
-                for ch in CHAMBERS:
-                    if remainder.startswith(ch):
-                        chamber = ch
-                        st = remainder[len(ch):]
-                        if re.match(r"^[A-Z]{2}$", st):
-                            state = st
-                        break
-                break
-        else:
-            # Handle separated format
-            if ln in PARTIES:
-                party = ln
-            elif ln in CHAMBERS:
-                chamber = ln
-            elif re.match(r"^[A-Z]{2}$", ln):
-                state = ln
+        if ln in PARTIES:
+            party = ln
+        elif ln in CHAMBERS:
+            chamber = ln
+        elif re.match(r"^[A-Z]{2}$", ln):
+            state = ln
 
     return name, party, chamber, state
 
@@ -101,6 +96,7 @@ def _parse_issuer_cell(cell_text):
         if m:
             ticker = m.group(1)
         else:
+            # First non-ticker line is the company name
             if not issuer:
                 issuer = ln
 
@@ -116,6 +112,10 @@ def _parse_tx_type(text):
         return "sell"
     return ""
 
+
+# ---------------------------------------------------------------------------
+# Scraper
+# ---------------------------------------------------------------------------
 
 def get_congress_trades(days_back=45, max_pages=10):
     """
@@ -159,20 +159,20 @@ def get_congress_trades(days_back=45, max_pages=10):
 
                         cell_texts = [c.inner_text().strip() for c in cells]
 
-                        # Politician (cell 0)
+                        # ----- Politician (cell 0) -----
                         politician, party, chamber, state = _parse_politician_cell(cell_texts[0])
                         if not politician:
                             continue
 
-                        # Issuer / Ticker (cell 1)
+                        # ----- Issuer / Ticker (cell 1) -----
                         issuer, ticker = _parse_issuer_cell(cell_texts[1])
                         if not ticker:
                             continue
 
-                        # Published date (cell 2) - may be "09:02\nYesterday"
+                        # ----- Published date (cell 2) -----
                         pub_date = _parse_date(cell_texts[2])
 
-                        # Traded date (cell 3) - "7 Sept\n2026"
+                        # ----- Traded date (cell 3) -----
                         traded_date = _parse_date(cell_texts[3])
 
                         trade_date = traded_date or pub_date
@@ -182,18 +182,20 @@ def get_congress_trades(days_back=45, max_pages=10):
                             stop_early = True
                             break
 
-                        # Owner (cell 5)
+                        # ----- Filed After (cell 4) - skip, derived -----
+
+                        # ----- Owner (cell 5) -----
                         owner = cell_texts[5].strip() if len(cell_texts) > 5 else ""
 
-                        # Type (cell 6)
+                        # ----- Type (cell 6) -----
                         tx_type = _parse_tx_type(cell_texts[6]) if len(cell_texts) > 6 else ""
                         if not tx_type:
                             continue
 
-                        # Size / Amount (cell 7)
+                        # ----- Size / Amount (cell 7) -----
                         amount = _parse_size(cell_texts[7]) if len(cell_texts) > 7 else ""
 
-                        # Price (cell 8)
+                        # ----- Price (cell 8) -----
                         price = cell_texts[8].strip() if len(cell_texts) > 8 else ""
 
                         page_trades.append({
@@ -243,6 +245,10 @@ def get_congress_trades(days_back=45, max_pages=10):
         "tickers": aggregate_by_ticker(all_trades),
     }
 
+
+# ---------------------------------------------------------------------------
+# Aggregation (unchanged logic, enriched output)
+# ---------------------------------------------------------------------------
 
 def aggregate_by_ticker(trades):
     """Aggregate trades by ticker and compute signals."""
@@ -323,6 +329,7 @@ def aggregate_by_ticker(trades):
             data["signal"] = "neutral"
             data["congress_score"] = 50
 
+        # Cap display lists
         data["recent_buyers"] = data["recent_buyers"][:5]
         data["recent_sellers"] = data["recent_sellers"][:5]
 
@@ -334,6 +341,10 @@ def aggregate_by_ticker(trades):
 
     return ticker_data
 
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
 
 def save_congress_data(result):
     """
@@ -358,8 +369,12 @@ def save_congress_data(result):
     return filename
 
 
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    result = get_congress_trades(days_back=60, max_pages=15)
+    result = get_congress_trades(days_back=45, max_pages=10)
     trades = result.get("trades", [])
     tickers = result.get("tickers", {})
 

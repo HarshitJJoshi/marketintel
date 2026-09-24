@@ -1,5 +1,7 @@
-from fastapi import FastAPI, BackgroundTasks, Header, HTTPException
+from fastapi import FastAPI, BackgroundTasks, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+import hashlib
+import hmac
 import json
 import math
 import os
@@ -483,6 +485,53 @@ def trigger_refresh(background_tasks: BackgroundTasks):
         return {"status": "already_running"}
     background_tasks.add_task(run_pipeline_task)
     return {"status": "started", "message": "Pipeline started in background"}
+
+LEMONSQUEEZY_WEBHOOK_SECRET = os.getenv("LEMONSQUEEZY_WEBHOOK_SECRET")
+
+def lemonsqueezy_plan(event: str, status: str):
+    if event == "subscription_created":
+        return "pro"
+    if event == "subscription_expired":
+        return "free"
+    if event == "subscription_updated":
+        return "pro" if status == "active" else "free"
+    return None
+
+def find_user_id_by_email(email: str):
+    # ponytail: scans all auth users page by page; fine for thousands, add an email->id lookup if it gets slow
+    email = email.lower()
+    page = 1
+    while True:
+        users = sb.auth.admin.list_users(page=page, per_page=1000)
+        for u in users:
+            if (u.email or "").lower() == email:
+                return u.id
+        if len(users) < 1000:
+            return None
+        page += 1
+
+@app.post("/api/webhooks/lemonsqueezy")
+async def lemonsqueezy_webhook(request: Request, x_signature: str = Header(default="")):
+    if not LEMONSQUEEZY_WEBHOOK_SECRET:
+        raise HTTPException(500, "Webhook secret not configured")
+    body = await request.body()
+    expected = hmac.new(LEMONSQUEEZY_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, x_signature):
+        raise HTTPException(401, "Invalid signature")
+
+    payload = json.loads(body)
+    attrs = payload.get("data", {}).get("attributes", {})
+    plan = lemonsqueezy_plan(payload.get("meta", {}).get("event_name"), attrs.get("status"))
+    email = attrs.get("user_email")
+    if not plan or not email:
+        return {"status": "ignored"}
+    if not sb:
+        raise HTTPException(503, "Supabase unavailable")  # non-2xx so Lemon Squeezy retries
+    user_id = find_user_id_by_email(email)
+    if not user_id:
+        return {"status": "ignored", "reason": "no user with that email"}
+    sb.table("profiles").update({"plan": plan}).eq("id", user_id).execute()
+    return {"status": "ok", "plan": plan}
 
 @app.get("/api/status")
 def get_status():
