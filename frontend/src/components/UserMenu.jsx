@@ -68,7 +68,14 @@ export default function UserMenu() {
               )}
             </div>
 
-            {!isPro && (
+            {isPro ? (
+              <a href="https://marketintel.lemonsqueezy.com/billing" target="_blank" rel="noopener noreferrer"
+                onClick={() => setOpen(false)} style={{
+                display: 'block', padding: '10px 14px', textDecoration: 'none',
+                color: C.accent, fontSize: 12, fontWeight: 600,
+                borderBottom: `1px solid ${C.border}`,
+              }}>Manage Subscription ↗</a>
+            ) : (
               <button onClick={() => { setOpen(false); window.location.href = '/upgrade' }} style={{
                 width: '100%', padding: '10px 14px', background: 'transparent', border: 'none',
                 cursor: 'pointer', color: C.accent, fontSize: 12, textAlign: 'left', fontWeight: 600,
