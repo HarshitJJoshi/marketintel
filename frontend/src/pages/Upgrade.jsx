@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import UserMenu from '../components/UserMenu'
+import Footer, { DISCLAIMER } from '../components/Footer'
+
+const CHECKOUT_URL = "https://marketintel.lemonsqueezy.com/checkout/buy/2164254"
 
 const C = {
   bg: "#0f1112", surface: "#181a1b", surfaceAlt: "#1f2223", border: "#2a2d2f",
@@ -100,19 +103,11 @@ export default function Upgrade() {
                 padding: '3px 10px', borderRadius: 4,
                 background: C.accent, color: C.bg,
               }}>RECOMMENDED</span>
-              <span style={{
-                fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em',
-                padding: '3px 10px', borderRadius: 4,
-                background: C.green, color: C.bg,
-              }}>BETA PRICING</span>
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: C.accent, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 10 }}>Pro</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 24 }}>
               <span style={{ fontSize: 36, fontWeight: 750, color: C.text }}>$1</span>
               <span style={{ fontSize: 14, color: C.textMuted }}>/ month</span>
-              <span style={{
-                fontSize: 12, color: C.textDim, textDecoration: 'line-through', marginLeft: 8,
-              }}>$9</span>
             </div>
             <div style={{ marginBottom: 24 }}>
               {PRO_FEATURES.map(f => (
@@ -127,13 +122,23 @@ export default function Upgrade() {
                 border: `1px solid ${C.accent}`, borderRadius: 8, fontSize: 13, fontWeight: 600,
               }}>Your current plan</button>
             ) : (
-              <button disabled style={{
-                width: '100%', padding: '11px', background: C.accent, color: C.bg,
-                border: 'none', borderRadius: 8, fontSize: 13.5, fontWeight: 650,
-                cursor: 'not-allowed', opacity: 0.7,
-              }}>Payment coming soon</button>
+              <a
+                href={`${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(user?.email || '')}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: 'block', boxSizing: 'border-box', textAlign: 'center', textDecoration: 'none',
+                  width: '100%', padding: '11px', background: C.accent, color: C.bg,
+                  borderRadius: 8, fontSize: 13.5, fontWeight: 650,
+                }}>Upgrade to Pro</a>
             )}
           </div>
+        </div>
+
+        <div style={{
+          marginTop: 20, padding: '12px 16px', borderRadius: 8, fontSize: 12, lineHeight: 1.55,
+          color: C.textMuted, background: C.surfaceAlt, border: `1px solid ${C.border}`, textAlign: 'center',
+        }}>
+          {DISCLAIMER} By subscribing you agree to our <Link to="/terms" style={{ color: C.accent }}>Terms</Link> and <Link to="/privacy" style={{ color: C.accent }}>Privacy Policy</Link>.
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
@@ -142,6 +147,7 @@ export default function Upgrade() {
           </Link>
         </div>
       </main>
+      <Footer />
     </div>
   )
 }

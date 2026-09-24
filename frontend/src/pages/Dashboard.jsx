@@ -3,6 +3,7 @@ import api from "../lib/api"
 import UserMenu from '../components/UserMenu'
 import { useAuth } from '../context/AuthContext'
 import ProGate from '../components/ProGate'
+import Footer from '../components/Footer'
 import axios from "axios"
 import CongressTab from '../components/CongressTab'
 
@@ -1269,6 +1270,7 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+      <Footer />
     </div>
   )
 }

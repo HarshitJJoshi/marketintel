@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
+import Footer from '../components/Footer'
 
 const API = "https://marketintel-production-e203.up.railway.app"
 
@@ -264,13 +265,9 @@ export default function Landing() {
           }}>Sign up free</Link>
         </section>
 
-        <footer style={{
-          textAlign: 'center', fontSize: 11, color: C.textDim, paddingTop: '2rem',
-          borderTop: `1px solid ${C.border}`, lineHeight: 1.6,
-        }}>
-          <div>MarketIntel is not a licensed broker or financial advisor. Signals are informational only.</div>
+        <Footer>
           <div style={{ marginTop: 6 }}>Data sources: yfinance, Reddit, SEC EDGAR, Capitol Trades, StockTwits, CNN Fear & Greed, CBOE VIX.</div>
-        </footer>
+        </Footer>
       </main>
     </div>
   )
